@@ -1,112 +1,13 @@
 import { notFound } from "next/navigation";
-
-const agents: Record<string, {
-  name: string;
-  role: string;
-  description: string;
-  capabilities: string[];
-  status: string;
-  domain: string;
-}> = {
-  lucian: {
-    name: "Lucian",
-    role: "Core Orchestrator",
-    domain: "Cognitive Routing",
-    status: "nominal",
-    description:
-      "Primary lattice coordinator. Routes cognition between agents, resolves conflicts, and maintains system coherence across all active processes. Lucian is the root node — all inter-agent traffic passes through or is authorized by this agent.",
-    capabilities: [
-      "Inter-agent task routing",
-      "Conflict resolution and arbitration",
-      "Lattice coherence monitoring",
-      "Priority queue management",
-      "Global state synchronization",
-    ],
-  },
-  osiris: {
-    name: "Osiris",
-    role: "Payment & Commerce",
-    domain: "Financial State",
-    status: "nominal",
-    description:
-      "Stripe-integrated transaction engine. Handles all payment flows, invoice generation, subscription management, and financial state reconciliation. Osiris is the source of truth for all monetary transactions within the lattice.",
-    capabilities: [
-      "Stripe payment processing",
-      "Invoice and billing automation",
-      "Subscription lifecycle management",
-      "Financial state reconciliation",
-      "Transaction audit logging",
-    ],
-  },
-  hermes: {
-    name: "Hermes",
-    role: "Messenger & API Bridge",
-    domain: "Communication Layer",
-    status: "nominal",
-    description:
-      "Inter-agent communication relay and external API bridge. Manages all webhook ingestion, outbound API calls, message queuing, and protocol translation between internal lattice agents and external systems.",
-    capabilities: [
-      "Webhook ingestion and routing",
-      "External API orchestration",
-      "Message queue management",
-      "Protocol translation",
-      "Rate limiting and retry logic",
-    ],
-  },
-  thoth: {
-    name: "Thoth",
-    role: "Knowledge & Memory",
-    domain: "Persistent State",
-    status: "nominal",
-    description:
-      "Persistent memory and knowledge graph engine. Indexes all cross-agent context, session history, semantic relationships, and long-term knowledge. Thoth provides recall and retrieval services to every agent in the lattice.",
-    capabilities: [
-      "Knowledge graph construction",
-      "Cross-agent context indexing",
-      "Semantic search and retrieval",
-      "Session and history persistence",
-      "Memory compression and pruning",
-    ],
-  },
-  theia: {
-    name: "Theia",
-    role: "Vision & Interface",
-    domain: "Front-End Intelligence",
-    status: "nominal",
-    description:
-      "UI/UX intelligence and visual rendering layer. Drives all front-end surfaces, user-facing output, and interface decisions. Theia translates lattice state into human-readable and interactive experiences.",
-    capabilities: [
-      "Dynamic UI generation",
-      "Visual state rendering",
-      "User interaction modeling",
-      "Accessibility and responsive design",
-      "Interface personalization",
-    ],
-  },
-  ptah: {
-    name: "Ptah",
-    role: "Builder & Infrastructure",
-    domain: "DevOps & Systems",
-    status: "nominal",
-    description:
-      "DevOps and systems architect. Manages deployments, infrastructure scaffolding, CI/CD pipelines, environment configuration, and platform automation. Ptah builds and maintains the foundation the lattice runs on.",
-    capabilities: [
-      "Deployment automation",
-      "Infrastructure scaffolding",
-      "CI/CD pipeline management",
-      "Environment configuration",
-      "System health monitoring",
-    ],
-  },
-};
+import { getAgent, agentList } from "@/lib/agents";
 
 export function generateStaticParams() {
-  return Object.keys(agents).map((id) => ({ id }));
+  return agentList.map((a) => ({ id: a.id }));
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const agent = agents[id];
+  const agent = getAgent(id);
   if (!agent) return {};
   return {
     title: `${agent.name} — MIRRORNODE`,
@@ -116,7 +17,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function AgentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const agent = agents[id];
+  const agent = getAgent(id);
   if (!agent) notFound();
 
   return (
@@ -135,11 +36,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
         className="relative z-10 flex items-center justify-between px-8 py-5"
         style={{ borderBottom: "1px solid var(--border)" }}
       >
-        <a
-          href="/"
-          className="flex items-center gap-3"
-          style={{ textDecoration: "none" }}
-        >
+        <a href="/" className="flex items-center gap-3" style={{ textDecoration: "none" }}>
           <svg width="24" height="24" viewBox="0 0 28 28" fill="none" aria-label="MIRRORNODE" xmlns="http://www.w3.org/2000/svg">
             <circle cx="14" cy="14" r="13" stroke="var(--accent)" strokeWidth="1.5" />
             <circle cx="14" cy="14" r="3" fill="var(--accent)" />
@@ -152,12 +49,20 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
             MIRRORNODE
           </span>
         </a>
-        <a
-          href="/dashboard"
-          style={{ fontFamily: "var(--font-mono)", fontSize: "0.7rem", letterSpacing: "0.1em", color: "var(--text-muted)", textDecoration: "none" }}
-        >
-          DASHBOARD →
-        </a>
+        <div className="flex items-center gap-6">
+          <a
+            href="/agents"
+            style={{ fontFamily: "var(--font-mono)", fontSize: "0.7rem", letterSpacing: "0.1em", color: "var(--text-muted)", textDecoration: "none" }}
+          >
+            ← AGENTS
+          </a>
+          <a
+            href="/dashboard"
+            style={{ fontFamily: "var(--font-mono)", fontSize: "0.7rem", letterSpacing: "0.1em", color: "var(--text-muted)", textDecoration: "none" }}
+          >
+            DASHBOARD →
+          </a>
+        </div>
       </nav>
 
       {/* Content */}
