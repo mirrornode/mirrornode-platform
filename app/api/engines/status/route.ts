@@ -1,40 +1,43 @@
-/**
- * GET /api/engines/status
- * Returns live telemetry for all agents in the manifest.
- *
- * This is the primary data source for the /agents Situation Room UI.
- * Fields:
- *   - status:             current operational status
- *   - last_heartbeat_ts: ISO timestamp of last known heartbeat
- *   - symbolic_depth:    current recursion depth in Fusion Engine lattice (0-8)
- *   - latency_ms:        last response latency in milliseconds
- *
- * Stub: returns manifest-seeded values until real instrumentation is wired.
- * Replace the stub block below with Redis/Upstash reads when PERSISTENCE_UPGRADE lands.
- */
+// app/api/engines/status/route.ts
+import { NextResponse } from 'next/server';
+import { registry } from '@/lib/registry';
 
-import { NextResponse } from "next/server";
-import { agentList } from "@/lib/agents";
-
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const now = new Date().toISOString();
+  try {
+    const status = registry.getStatus();
 
-  // ---------------------------------------------------------------------------
-  // STUB — replace with real telemetry store reads (Upstash/Redis)
-  // ---------------------------------------------------------------------------
-  const agents = agentList.map((agent) => ({
-    id:                 agent.id,
-    status:             agent.status,
-    last_heartbeat_ts:  now,          // stub: real value comes from heartbeat writes
-    symbolic_depth:     0,            // stub: real value comes from Fusion Engine state
-    latency_ms:         null,         // stub: real value comes from agent ping
-  }));
-  // ---------------------------------------------------------------------------
-
-  return NextResponse.json({
-    agents,
-    updated_at: now,
-  });
+    return NextResponse.json({
+      ...status,
+      version: "RISING_STAR v1.1.1",
+      source: "registry",
+      last_heartbeat_ts: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('[Status API] Error:', error);
+    
+    return NextResponse.json({
+      active: true,
+      status: "error",
+      version: "RISING_STAR v1.1.1",
+      last_heartbeat_ts: new Date().toISOString(),
+      glyphCount: 0,
+      numeraetheLoaded: false,
+      metrics: { 
+        latencyMs: 0, 
+        fusedGlyphs: 0 
+      },
+      lattice: {
+        complexity: null,
+        bindingStrength: null,
+        symbolic_depth: 0,
+        nesting_density: 0,
+        circular_refs_detected: 0,
+        cache_size: 0,
+      },
+      source: "fallback",
+      error: String(error)
+    }, { status: 500 });
+  }
 }
