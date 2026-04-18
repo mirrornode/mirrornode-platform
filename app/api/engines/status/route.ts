@@ -18,7 +18,7 @@ async function fetchAgentHeartbeat(id: string, url: string) {
     const res = await fetch(url, { signal: AbortSignal.timeout(1500) });
     const latency_ms = Date.now() - start;
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const  AgentHeartbeat = await res.json();
+        const data = await res.json();
     return {
       id,
       status:            data.status === 'alive' ? 'nominal' as const : 'degraded' as const,
