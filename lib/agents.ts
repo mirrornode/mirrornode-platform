@@ -7,6 +7,7 @@ export interface Agent {
   description: string;
   capabilities: string[];
   status: AgentStatus;
+    heartbeat_url?: string;
   domain: string;
 }
 
@@ -17,6 +18,7 @@ export const agents: Record<string, Agent> = {
     role: "Core Orchestrator",
     domain: "Cognitive Routing",
     status: "nominal",
+        heartbeat_url: "https://mirrornode-backend.vercel.app/health",
     description:
       "Primary lattice coordinator. Routes cognition between agents, resolves conflicts, and maintains system coherence across all active processes. Lucian is the root node — all inter-agent traffic passes through or is authorized by this agent.",
     capabilities: [
