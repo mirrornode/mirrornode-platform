@@ -13,25 +13,36 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { registry } from '@/lib/registry';
+import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
 
+const eventSchema = z.object({
+  node: z.string().trim().min(1, 'node is required'),
+  type: z.string().trim().min(1, 'type is required'),
+  payload: z.record(z.string(), z.unknown()).default({}),
+});
+
 export async function POST(req: NextRequest) {
-  let body: unknown;
+  let event: z.infer<typeof eventSchema>;
 
   try {
-    body = await req.json();
+    const body = await req.json();
+    const result = eventSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json(
+        { error: 'Invalid request body', details: result.error.flatten() },
+        { status: 400 }
+      );
+    }
+    event = result.data;
   } catch {
     return NextResponse.json(
       { error: 'Invalid JSON body' },
       { status: 400 }
     );
   }
-
-  const event = body as Record<string, unknown>;
-  const node    = typeof event.node    === 'string' ? event.node    : 'unknown';
-  const type    = typeof event.type    === 'string' ? event.type    : 'unknown';
-  const payload = typeof event.payload === 'object' ? event.payload : {};
+  const { node, type, payload } = event;
 
   // Log to console (visible in Vercel function logs)
   console.log(`[Event] node=${node} type=${type}`, payload);

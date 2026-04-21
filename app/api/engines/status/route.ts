@@ -18,12 +18,12 @@ async function fetchAgentHeartbeat(id: string, url: string) {
     const res = await fetch(url, { signal: AbortSignal.timeout(1500) });
     const latency_ms = Date.now() - start;
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
     return {
       id,
-      status:            data.status === 'alive' ? 'nominal' as const : 'degraded' as const,
-      last_heartbeat_ts: data.timestamp,
-      symbolic_depth:    data.symbolic_depth ?? 0,
+      status:
+        data.status === 'alive' ? ('nominal' as const) : ('degraded' as const),
+      last_heartbeat_ts: data.timestamp ?? null,
+      symbolic_depth: typeof data.symbolic_depth === 'number' ? data.symbolic_depth : 0,
       latency_ms,
     };
   } catch {
