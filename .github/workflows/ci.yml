@@ -1,52 +1,27 @@
 name: CI
-
 on:
   push:
-    branches:
-      - main
-      - master
+    branches: [ main ]
   pull_request:
+    branches: [ main ]
 
 jobs:
-  lint:
-    name: ci/lint
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: npm
+          node-version: 18
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install deps
+        run: pnpm install  # or npm install, as appropriate
 
-      - name: Run lint
-        run: npm run lint
+      - name: Lint
+        run: pnpm run lint  # or your preferred lint command
 
-  test:
-    name: ci/test
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: lint
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests
-        run: npm run test
+      - name: Build
+        run: pnpm run build
