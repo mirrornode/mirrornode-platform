@@ -1,8 +1,6 @@
 name: CI
-
 permissions:
   contents: read
-
 on:
   push:
     branches: [ main ]
@@ -22,10 +20,10 @@ jobs:
           node-version: 18
 
       - name: Install deps
-        run: pnpm install  # or npm install, as appropriate
+        run: pnpm install
 
       - name: Lint
-        run: pnpm run lint  # or your preferred lint command
+        run: pnpm run lint
 
       - name: Build
         run: pnpm run build
