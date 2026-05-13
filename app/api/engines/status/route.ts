@@ -4,24 +4,23 @@ import { agentList } from '@/lib/agents';
 export const dynamic = 'force-dynamic';
 
 interface AgentHeartbeat {
-  engine: string;
-  status: string;
-  timestamp: string;
-  latency_ms: number;
-  version: string;
+  id: string;
+  status: 'nominal' | 'degraded' | 'offline';
+  last_heartbeat_ts: string | null;
   symbolic_depth: number;
+  latency_ms: number | null;
 }
 
-async function fetchAgentHeartbeat(id: string, url: string) {
+async function fetchAgentHeartbeat(id: string, url: string): Promise<AgentHeartbeat> {
   try {
     const start = Date.now();
     const res = await fetch(url, { signal: AbortSignal.timeout(1500) });
     const latency_ms = Date.now() - start;
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
     return {
       id,
-      status:
-        data.status === 'alive' ? ('nominal' as const) : ('degraded' as const),
+      status: data.status === 'alive' ? ('nominal' as const) : ('degraded' as const),
       last_heartbeat_ts: data.timestamp ?? null,
       symbolic_depth: typeof data.symbolic_depth === 'number' ? data.symbolic_depth : 0,
       latency_ms,
@@ -29,33 +28,33 @@ async function fetchAgentHeartbeat(id: string, url: string) {
   } catch {
     return {
       id,
-      status:            'offline' as const,
+      status: 'offline' as const,
       last_heartbeat_ts: null,
-      symbolic_depth:    0,
-      latency_ms:        null,
+      symbolic_depth: 0,
+      latency_ms: null,
     };
   }
 }
 
 export async function GET() {
-  const live    = agentList.filter(a => a.heartbeat_url);
+  const live = agentList.filter(a => a.heartbeat_url);
   const static_ = agentList.filter(a => !a.heartbeat_url);
 
   const liveResults = await Promise.all(
     live.map(a => fetchAgentHeartbeat(a.id, a.heartbeat_url!))
   );
 
-  const staticResults = static_.map(a => ({
-    id:                a.id,
-    status:            a.status,
+  const staticResults: AgentHeartbeat[] = static_.map(a => ({
+    id: a.id,
+    status: a.status as 'nominal' | 'degraded' | 'offline',
     last_heartbeat_ts: null,
-    symbolic_depth:    0,
-    latency_ms:        null,
+    symbolic_depth: 0,
+    latency_ms: null,
   }));
 
   return NextResponse.json({
-    agents:     [...liveResults, ...staticResults],
+    agents: [...liveResults, ...staticResults],
     updated_at: new Date().toISOString(),
-    version:    'RISING_STAR v1.1.1',
+    version: 'RISING_STAR v1.1.1',
   });
 }
