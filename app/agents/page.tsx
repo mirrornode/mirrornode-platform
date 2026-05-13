@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { agentList, Agent } from "@/lib/agents";
 import { domainToNumeraethe } from "@/fusion/types";
 
+import Link from "next/link";
 // ---------------------------------------------------------------------------
 // Telemetry types
 // ---------------------------------------------------------------------------
