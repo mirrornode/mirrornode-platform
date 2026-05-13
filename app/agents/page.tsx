@@ -177,7 +177,7 @@ export default function AgentsPage() {
             const depthWidth = getDepthBarWidth(agent.symbolic_depth);
 
             return (
-              <a
+                        <Link
                 key={agent.id}
                 href={`/agents/${agent.id}`}
                 className="group animate-fade-in rounded-xl p-6"
@@ -279,7 +279,7 @@ export default function AgentsPage() {
                     VIEW →
                   </span>
                 </div>
-              </a>
+                          </Link>
             );
           })}
         </div>
