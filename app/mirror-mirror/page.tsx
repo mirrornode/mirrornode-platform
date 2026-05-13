@@ -1,7 +1,10 @@
 'use client';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Mic, Volume2, Eye, BookOpen, Scale, Moon, Play, Loader2 } from 'lucide-react';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Volume2, Eye, BookOpen, Scale, Moon, Play, Loader2 } from 'lucide-react';
+type SpeechRecognitionEvent = {
+  results: { [index: number]: { [index: number]: { transcript: string } } };
+};
 
 const modes = [
   { id: 'oracle', label: 'Oracle', icon: Eye, color: '#c8944a', desc: 'Wisdom & Pattern', endpoint: 'oracle' },
@@ -19,93 +22,76 @@ export default function MirrorMirror() {
   const [response, setResponse] = useState('');
   const [status, setStatus] = useState('Say "Mirror Mirror..." to begin');
 
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<{ continuous: boolean; interimResults: boolean; lang: string; onresult: ((e: SpeechRecognitionEvent) => void) | null; onerror: (() => void) | null; onend: (() => void) | null; start: () => void; stop: () => void } | null>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const SpeechRecognitionAPI = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognitionAPI) {
-      recognitionRef.current = new SpeechRecognitionAPI();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
-      recognitionRef.current.lang = 'en-US';
-
-      recognitionRef.current.onresult = async (event: any) => {
-        const text = event.results[0][0].transcript.trim();
-        setTranscript(text);
-        setStatus(`Heard: "${text}"`);
-
-        if (text.toLowerCase().includes('mirror mirror') || text.length > 8) {
-          await sendToBackend(text);
-        }
-      };
-
-      recognitionRef.current.onerror = () => {
-        setStatus('Listening error. Try again.');
-        setIsListening(false);
-      };
-
-      recognitionRef.current.onend = () => setIsListening(false);
-    }
-
-    synthRef.current = window.speechSynthesis;
-  }, [currentMode]);
-
-  const sendToBackend = async (userInput: string) => {
+  const sendToBackend = useCallback(async (userInput: string) => {
     setIsThinking(true);
     setStatus('Reflecting...');
-
     try {
       const mode = modes.find(m => m.id === currentMode);
       const endpoint = mode?.endpoint || 'oracle';
-
       const res = await fetch(`/api/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: userInput,
-          mode: currentMode,
-        }),
+        body: JSON.stringify({ message: userInput, mode: currentMode }),
       });
-
       const data = await res.json();
-
-      const reply = data.response || data.message || "The mirror is quiet today...";
+      const reply = data.response || data.message || 'The mirror is quiet today...';
       setResponse(reply);
-
-      // Speak the response
       if (synthRef.current) {
         const utterance = new SpeechSynthesisUtterance(reply);
         utterance.rate = 0.92;
         utterance.pitch = 1.05;
         synthRef.current.speak(utterance);
         setIsSpeaking(true);
-
         utterance.onend = () => setIsSpeaking(false);
       }
     } catch (error) {
       console.error('Mirror Mirror API error:', error);
-      const fallback = "The lattice is holding, but the connection is faint. Try again.";
+      const fallback = 'The lattice is holding, but the connection is faint. Try again.';
       setResponse(fallback);
-      
       if (synthRef.current) {
-        const utterance = new SpeechSynthesisUtterance(fallback);
-        synthRef.current.speak(utterance);
+        synthRef.current.speak(new SpeechSynthesisUtterance(fallback));
       }
     } finally {
       setIsThinking(false);
       setStatus(`${modes.find(m => m.id === currentMode)?.label} mode active`);
     }
-  };
+  }, [currentMode]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const SpeechRecognitionAPI =
+      window.SpeechRecognition ||
+      (window as Window & { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition;
+    if (SpeechRecognitionAPI) {
+      recognitionRef.current = new SpeechRecognitionAPI();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = 'en-US';
+      recognitionRef.current.onresult = async (event: SpeechRecognitionEvent) => {
+        const text = event.results[0][0].transcript.trim();
+        setTranscript(text);
+        setStatus(`Heard: "${text}"`);
+        if (text.toLowerCase().includes('mirror mirror') || text.length > 8) {
+          await sendToBackend(text);
+        }
+      };
+      recognitionRef.current.onerror = () => {
+        setStatus('Listening error. Try again.');
+        setIsListening(false);
+      };
+      recognitionRef.current.onend = () => setIsListening(false);
+    }
+    synthRef.current = window.speechSynthesis;
+  }, [currentMode, sendToBackend]);
 
   const toggleListening = () => {
     if (!recognitionRef.current) {
-      alert("Speech recognition not supported in this browser. Please use Chrome or Edge.");
+      alert('Speech recognition not supported in this browser. Please use Chrome or Edge.');
       return;
     }
-
     if (isListening) {
       recognitionRef.current.stop();
       setIsListening(false);
@@ -126,21 +112,14 @@ export default function MirrorMirror() {
   };
 
   return (
-    <div className="min-h-screen bg-[#050508] text-[#e8e6e0] overflow-hidden relative font-serif">
-      <div className="absolute inset-0 bg-[radial-gradient(#1a1a2e_0.8px,transparent_1px)] bg-[length:5px_5px] opacity-30" />
-
-      <div className="relative z-10 max-w-3xl mx-auto pt-20 px-6 pb-24">
-        <div className="text-center mb-16">
-          <div className="flex items-center justify-center gap-4 mb-6">
-            <div className="w-4 h-4 bg-[#c8944a] rounded-full animate-pulse" />
-            <span className="uppercase tracking-[4px] text-sm text-[#c8944a]">MIRROR MIRROR</span>
-          </div>
-          <h1 className="text-7xl font-light tracking-[0.5em] mb-3">THE MIRROR</h1>
-          <p className="text-[#a8aab8] text-xl">Speak. I reflect.</p>
+    <main className="min-h-screen bg-[#0d0e14] text-[#e8e4d4] flex flex-col items-center justify-start pt-12 pb-24 px-4 font-mono">
+      <div className="w-full max-w-2xl flex flex-col items-center gap-8">
+        <div className="text-center">
+          <h1 className="text-4xl font-bold tracking-widest text-[#c8944a] mb-2">MIRROR MIRROR</h1>
+          <p className="text-[#6a6860] text-sm tracking-wider">THE MIRROR</p>
+          <p className="text-[#8a8478] text-xs mt-1">Speak. I reflect.</p>
         </div>
-
-        {/* Mode Selector */}
-        <div className="flex flex-wrap justify-center gap-4 mb-16">
+        <div className="flex flex-wrap justify-center gap-3 w-full">
           {modes.map((mode) => {
             const Icon = mode.icon;
             const active = currentMode === mode.id;
@@ -149,81 +128,81 @@ export default function MirrorMirror() {
                 key={mode.id}
                 onClick={() => changeMode(mode.id)}
                 className={`group flex flex-col items-center gap-3 px-8 py-5 rounded-3xl border transition-all duration-300 hover:scale-105 ${
-                  active 
-                    ? 'border-[#c8944a] bg-[#c8944a]/10 shadow-lg shadow-[#c8944a]/20' 
+                  active
+                    ? 'border-[#c8944a] bg-[#c8944a]/10 shadow-lg shadow-[#c8944a]/20'
                     : 'border-[#3a3c4a] hover:border-[#6a6860]'
                 }`}
               >
-                <Icon className={`w-8 h-8 transition-colors ${active ? 'text-[#c8944a]' : 'text-[#6a6860] group-hover:text-[#a8aab8]'}`} />
-                <div>
-                  <div className={`font-medium ${active ? 'text-[#c8944a]' : ''}`}>{mode.label}</div>
-                  <div className="text-xs text-[#6a6860]">{mode.desc}</div>
-                </div>
+                <Icon size={22} style={{ color: mode.color }} />
+                <span className="text-sm font-semibold tracking-wider">{mode.label}</span>
+                <span className="text-xs text-[#6a6860]">{mode.desc}</span>
               </button>
             );
           })}
         </div>
-
-        {/* Voice Interface */}
-        <div className="flex flex-col items-center">
-          <div 
+        <div className="flex flex-col items-center gap-4">
+          <button
             onClick={toggleListening}
-            className={`relative w-56 h-56 flex items-center justify-center cursor-pointer transition-all duration-500 rounded-full border-4 ${
-              isListening 
-                ? 'border-red-500 scale-110 shadow-2xl shadow-red-500/30' 
-                : 'border-[#c8944a]/60 hover:border-[#c8944a] hover:scale-105'
+            className={`w-24 h-24 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
+              isListening
+                ? 'border-red-400 bg-red-400/10 animate-pulse'
+                : isThinking
+                ? 'border-[#c8944a] bg-[#c8944a]/10'
+                : 'border-[#3a3c4a] hover:border-[#c8944a] hover:bg-[#c8944a]/5'
             }`}
           >
-            <div className={`w-44 h-44 rounded-full flex items-center justify-center transition-all ${isListening ? 'bg-red-500/10' : 'bg-[#c8944a]/5'}`}>
-              {isListening ? (
-                <Mic className="w-24 h-24 text-red-500 animate-pulse" />
-              ) : isThinking ? (
-                <Loader2 className="w-24 h-24 text-[#c8944a] animate-spin" />
-              ) : (
-                <Play className="w-24 h-24 text-[#c8944a]" />
-              )}
+            {isListening ? (
+              <Mic size={32} className="text-red-400" />
+            ) : isThinking ? (
+              <Loader2 size={32} className="text-[#c8944a] animate-spin" />
+            ) : (
+              <Play size={32} className="text-[#6a6860]" />
+            )}
+          </button>
+          {isListening && (
+            <div className="flex gap-1">
+              {[...Array(5)].map((_, i) => (
+                <div
+                  key={i}
+                  className="w-1 bg-red-400 rounded-full animate-pulse"
+                  style={{ height: `${12 + Math.random() * 20}px`, animationDelay: `${i * 0.1}s` }}
+                />
+              ))}
             </div>
-            {isListening && <div className="absolute inset-0 border border-red-500/50 rounded-full animate-ping" />}
-          </div>
-
-          <div className="mt-10 text-center max-w-md">
-            <div className="text-[#c8944a] font-medium tracking-widest text-sm mb-2">
+          )}
+          <div className="text-center">
+            <p className="text-[#c8944a] text-xs tracking-widest font-semibold">
               {modes.find(m => m.id === currentMode)?.label.toUpperCase()} MODE
-            </div>
-            <div className="text-[#a8aab8] text-lg min-h-[1.8em]">
-              {status}
-            </div>
+            </p>
+            <p className="text-[#6a6860] text-xs mt-1">{status}</p>
           </div>
         </div>
-
-        {/* Output Area */}
+        {isSpeaking && (
+          <div className="flex items-center gap-2 text-[#c8944a] text-xs">
+            <Volume2 size={14} />
+            <span>Speaking...</span>
+          </div>
+        )}
         {(transcript || response) && (
-          <div className="mt-16 space-y-8 max-w-2xl mx-auto">
+          <div className="w-full flex flex-col gap-4">
             {transcript && (
-              <div className="bg-[#0a0a12] border border-[#3a3c4a] rounded-3xl p-8">
-                <div className="uppercase text-xs tracking-widest text-[#6a6860] mb-3">YOU SAID</div>
-                <div className="text-xl italic leading-relaxed">"{transcript}"</div>
+              <div className="bg-[#1a1c26] rounded-2xl p-6 border border-[#3a3c4a]">
+                <p className="text-[#6a6860] text-xs tracking-widest mb-3">YOU SAID</p>
+                <p className="text-[#e8e4d4] italic">&ldquo;{transcript}&rdquo;</p>
               </div>
             )}
-
             {response && (
-              <div className="bg-[#0a0a12] border border-[#c8944a]/40 rounded-3xl p-10">
-                <div className="flex items-center gap-3 mb-6">
-                  <Volume2 className="w-5 h-5 text-[#c8944a]" />
-                  <span className="uppercase text-xs tracking-widest text-[#c8944a]">THE MIRROR REFLECTS</span>
-                </div>
-                <div className="text-2xl leading-relaxed text-[#e8e6e0]">
-                  {response}
-                </div>
+              <div className="bg-[#1a1c26] rounded-2xl p-6 border border-[#c8944a]/30">
+                <p className="text-[#c8944a] text-xs tracking-widest mb-3">THE MIRROR REFLECTS</p>
+                <p className="text-[#e8e4d4] leading-relaxed">{response}</p>
               </div>
             )}
           </div>
         )}
+        <p className="text-[#3a3c4a] text-xs tracking-widest mt-8">
+          MIRRORNODE &middot; MIRROR MIRROR &middot; &#x1F9B2; &middot; NOTHING IS LOST
+        </p>
       </div>
-
-      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 text-xs tracking-[3px] text-[#3a3c4a] font-mono">
-        MIRRORNODE · MIRROR MIRROR · 🪢 · NOTHING IS LOST
-      </div>
-    </div>
+    </main>
   );
 }
