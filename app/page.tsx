@@ -1,3 +1,7 @@
+"use client";
+
+import Link from "next/link";
+
 export default function Home() {
   const agents = [
     {
@@ -98,6 +102,13 @@ export default function Home() {
           </span>
         </div>
         <div className="flex items-center gap-6">
+          <Link
+            href="/audit"
+            className="inline-flex items-center gap-2 rounded-md border border-zinc-700 px-4 py-2 text-sm text-zinc-200 transition hover:border-zinc-500"
+          >
+            Osiris Audit v1 — $149
+            <span aria-hidden>→</span>
+          </Link>
           <span
             style={{
               fontFamily: "var(--font-mono)",

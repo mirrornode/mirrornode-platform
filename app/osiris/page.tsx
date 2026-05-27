@@ -123,7 +123,7 @@ export default function OsirisPage() {
           <span style={styles.panelLabel}>GET /api/state/osiris</span>
           <span style={styles.panelMeta}>
             {state
-              ? `last_sync: ${String((state as Record<string,unknown>)?._meta?.timestamp ?? '—')}`
+              ? `last_sync: ${String((state as { _meta?: { timestamp?: string | number } })?._meta?.timestamp ?? '—')}`
               : 'awaiting…'}
           </span>
         </div>
@@ -144,7 +144,7 @@ export default function OsirisPage() {
         </div>
         <div style={styles.log}>
           {eventLog.length === 0 ? (
-            <span style={styles.logEmpty}>// no events yet</span>
+            <span style={styles.logEmpty}>no events yet</span>
           ) : (
             eventLog.map((e, i) => (
               <div key={i} style={styles.logLine}>{e}</div>

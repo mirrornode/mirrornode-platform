@@ -9,7 +9,7 @@
  * Status: SYMBOLIC_MAPPING v1 — manifest wired, recursion scaffolded
  */
 
-import { Agent, agentList, getAgent } from "@/lib/agents";
+import { agentList, getAgent } from "@/lib/agents";
 import {
   NumeraetheType,
   domainToNumeraethe,

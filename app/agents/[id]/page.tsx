@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAgent, agentList } from "@/lib/agents";
 
@@ -36,7 +37,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
         className="relative z-10 flex items-center justify-between px-8 py-5"
         style={{ borderBottom: "1px solid var(--border)" }}
       >
-        <a href="/" className="flex items-center gap-3" style={{ textDecoration: "none" }}>
+        <Link href="/" className="flex items-center gap-3" style={{ textDecoration: "none" }}>
           <svg width="24" height="24" viewBox="0 0 28 28" fill="none" aria-label="MIRRORNODE" xmlns="http://www.w3.org/2000/svg">
             <circle cx="14" cy="14" r="13" stroke="var(--accent)" strokeWidth="1.5" />
             <circle cx="14" cy="14" r="3" fill="var(--accent)" />
@@ -48,20 +49,20 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
           <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.8rem", letterSpacing: "0.15em", color: "var(--foreground)", fontWeight: 500 }}>
             MIRRORNODE
           </span>
-        </a>
+        </Link>
         <div className="flex items-center gap-6">
-          <a
+          <Link
             href="/agents"
             style={{ fontFamily: "var(--font-mono)", fontSize: "0.7rem", letterSpacing: "0.1em", color: "var(--text-muted)", textDecoration: "none" }}
           >
             ← AGENTS
-          </a>
-          <a
+          </Link>
+          <Link
             href="/dashboard"
             style={{ fontFamily: "var(--font-mono)", fontSize: "0.7rem", letterSpacing: "0.1em", color: "var(--text-muted)", textDecoration: "none" }}
           >
             DASHBOARD →
-          </a>
+          </Link>
         </div>
       </nav>
 

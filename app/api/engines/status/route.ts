@@ -11,17 +11,19 @@ interface AgentHeartbeat {
   latency_ms: number | null;
 }
 
+interface RawAgentHeartbeat {
+  status?: AgentHeartbeat['status'] | 'alive';
+  timestamp?: string | null;
+  symbolic_depth?: number;
+}
+
 async function fetchAgentHeartbeat(id: string, url: string): Promise<AgentHeartbeat> {
   try {
     const start = Date.now();
     const res = await fetch(url, { signal: AbortSignal.timeout(1500) });
     const latency_ms = Date.now() - start;
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-<<<<<<< HEAD
-    const data = await res.json();
-=======
-    const data = (await res.json()) as Partial<AgentHeartbeat>;
->>>>>>> 562a1c7 (fix: engine status heartbeat parse + split ci/lint and ci/test)
+    const data = (await res.json()) as RawAgentHeartbeat;
     return {
       id,
       status: data.status === 'alive' ? ('nominal' as const) : ('degraded' as const),
