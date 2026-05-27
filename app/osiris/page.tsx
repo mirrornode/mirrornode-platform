@@ -152,7 +152,15 @@ export default function OsirisPage() {
           )}
         </div>
       </section>
-    </main>
+    
+      <a 
+        href={process.env.NEXT_PUBLIC_STRIPE_CHECKOUT_URL || "#"} 
+        className="fixed bottom-8 right-8 bg-[#00ff88] text-black px-6 py-3 font-mono font-bold hover:bg-white transition-colors z-50 shadow-[0_0_15px_rgba(0,255,136,0.3)]"
+      >
+        INITIATE AUDIT ($149)
+      </a>
+
+</main>
   );
 }
 
