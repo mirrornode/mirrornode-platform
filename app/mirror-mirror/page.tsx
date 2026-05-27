@@ -62,15 +62,17 @@ export default function MirrorMirror() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    /* eslint-disable @typescript-eslint/no-explicit-any */
     const SpeechRecognitionAPI =
-      window.SpeechRecognition ||
-      (window as Window & { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition;
+      (window as any).SpeechRecognition ||
+      (window as Window & { webkitSpeechRecognition?: any }).webkitSpeechRecognition;
+    /* eslint-enable @typescript-eslint/no-explicit-any */
     if (SpeechRecognitionAPI) {
       recognitionRef.current = new SpeechRecognitionAPI();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
-      recognitionRef.current.lang = 'en-US';
-      recognitionRef.current.onresult = async (event: SpeechRecognitionEvent) => {
+      recognitionRef.current!.continuous = false;
+      recognitionRef.current!.interimResults = false;
+      recognitionRef.current!.lang = 'en-US';
+      recognitionRef.current!.onresult = async (event: SpeechRecognitionEvent) => {
         const text = event.results[0][0].transcript.trim();
         setTranscript(text);
         setStatus(`Heard: "${text}"`);
@@ -78,11 +80,11 @@ export default function MirrorMirror() {
           await sendToBackend(text);
         }
       };
-      recognitionRef.current.onerror = () => {
+      recognitionRef.current!.onerror = () => {
         setStatus('Listening error. Try again.');
         setIsListening(false);
       };
-      recognitionRef.current.onend = () => setIsListening(false);
+      recognitionRef.current!.onend = () => setIsListening(false);
     }
     synthRef.current = window.speechSynthesis;
   }, [currentMode, sendToBackend]);
@@ -93,12 +95,12 @@ export default function MirrorMirror() {
       return;
     }
     if (isListening) {
-      recognitionRef.current.stop();
+      recognitionRef.current!.stop();
       setIsListening(false);
     } else {
       setTranscript('');
       setResponse('');
-      recognitionRef.current.start();
+      recognitionRef.current!.start();
       setIsListening(true);
       setStatus('Listening... Speak freely after "Mirror Mirror..."');
     }
