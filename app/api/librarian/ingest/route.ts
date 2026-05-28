@@ -1,82 +1,79 @@
 import { NextResponse } from 'next/server';
 import { Pinecone } from '@pinecone-database/pinecone';
-import OpenAI from 'openai';
-import { PDFParse } from 'pdf-parse';
+import { getUserFromBearer } from '@/utils/supabase/server';
+
+const pineconeApiKey = process.env.PINECONE_API_KEY;
+const pineconeIndexName = process.env.PINECONE_INDEX_NAME || 'mirrornode-vault';
+
+function determineTier(fileSize: number) {
+  if (fileSize < 250_000) {
+    return { severity: 'LOW' as const, quote: 49, checkoutTier: 'tier1' as const };
+  }
+  if (fileSize < 1_000_000) {
+    return { severity: 'MEDIUM' as const, quote: 149, checkoutTier: 'tier2' as const };
+  }
+  return { severity: 'HIGH' as const, quote: 499, checkoutTier: 'tier3' as const };
+}
 
 export async function POST(req: Request) {
   try {
+    const { user, error: authError } = await getUserFromBearer(req);
+
+    if (!user) {
+      return NextResponse.json({ error: authError }, { status: 401 });
+    }
+
+    if (!pineconeApiKey) {
+      return NextResponse.json({ error: 'Pinecone is not configured.' }, { status: 500 });
+    }
+
     const formData = await req.formData();
-    const file = formData.get('file') as File;
+    const file = formData.get('file');
 
-    if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: 'No document provided.' }, { status: 400 });
     }
 
-    console.log(`Librarian Agent parsing: ${file.name} (${file.size} bytes)`);
+    const { severity, quote, checkoutTier } = determineTier(file.size);
+    const documentId = `doc_${user.id}_${Date.now()}`;
 
-    let rawText = '';
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const vector = new Array(1536).fill(0.001);
 
-    if (file.name.endsWith('.pdf') || file.type === 'application/pdf') {
-      const parser = new PDFParse({ data: buffer });
-      const data = await parser.getText();
-      rawText = data.text;
-      await parser.destroy();
-    } else {
-      rawText = buffer.toString('utf-8');
-    }
-
-    if (!rawText || rawText.trim() === '') {
-      return NextResponse.json({ error: 'File is empty or unreadable' }, { status: 400 });
-    }
-
-    if (!process.env.OPENAI_API_KEY || !process.env.PINECONE_API_KEY) {
-      console.warn("Missing OpenAI or Pinecone keys. Returning parsed text without indexing.");
-      return NextResponse.json({
-        success: true,
-        message: `File ${file.name} parsed successfully (Vector indexing skipped - missing keys). Extracted ${rawText.length} characters.`,
-        size: file.size,
-      }, { status: 200 });
-    }
-
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const embeddingResponse = await openai.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: rawText.substring(0, 8000), 
-    });
-    const vector = embeddingResponse.data[0].embedding;
-
-    const pc = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
-    const indexName = process.env.PINECONE_INDEX_NAME || 'mirrornode-index';
-    const index = pc.Index(indexName);
-
-    const recordId = `doc-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9]/g, '-')}`;
+    const pinecone = new Pinecone({ apiKey: pineconeApiKey });
+    const index = pinecone.Index(pineconeIndexName);
 
     await index.upsert({
-      records: [{
-        id: recordId,
-        values: vector,
-        metadata: {
-          filename: file.name,
-          size: file.size,
-          type: file.type,
-          snippet: rawText.substring(0, 500)
-        }
-      }]
+      records: [
+        {
+          id: documentId,
+          values: vector,
+          metadata: {
+            owner_id: user.id,
+            vaulted: false,
+            paid: false,
+            filename: file.name,
+            mime_type: file.type || 'application/octet-stream',
+            bytes: file.size,
+            severity,
+            quote,
+            checkout_tier: checkoutTier,
+            source: 'librarian',
+            ingested_at: new Date().toISOString(),
+          },
+        },
+      ],
     });
-
-    console.log(`Librarian Agent successfully indexed: ${recordId}`);
 
     return NextResponse.json({
       success: true,
-      message: `File ${file.name} extracted, embedded, and indexed to Pinecone.`,
-      size: file.size,
-    }, { status: 200 });
-
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Librarian Ingest Error:', error);
-    return NextResponse.json({ error: errorMessage || 'Failed to process file' }, { status: 500 });
+      documentId,
+      severity,
+      quote,
+      checkoutTier,
+      message: 'Document triaged. Awaiting payment to enter the vault.',
+    });
+  } catch (error) {
+    console.error('Librarian ingest error:', error);
+    return NextResponse.json({ error: 'Ingestion failed.' }, { status: 500 });
   }
 }
