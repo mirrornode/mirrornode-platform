@@ -74,8 +74,9 @@ export async function POST(req: Request) {
       size: file.size,
     }, { status: 200 });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Librarian Ingest Error:', error);
-    return NextResponse.json({ error: error.message || 'Failed to process file' }, { status: 500 });
+    return NextResponse.json({ error: errorMessage || 'Failed to process file' }, { status: 500 });
   }
 }
