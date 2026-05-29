@@ -1,15 +1,29 @@
-import Link from 'next/link';
+type SuccessPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
 
-export default function SuccessPage() {
+export default async function SuccessPage({ searchParams }: SuccessPageProps) {
+  const params = (await searchParams) || {};
+  const sessionId =
+    typeof params.session_id === 'string'
+      ? params.session_id
+      : Array.isArray(params.session_id)
+        ? params.session_id[0]
+        : null;
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#0a0a0a] text-[#00ff88] p-4 font-mono">
-      <h1 className="text-2xl mb-4 font-bold tracking-widest shadow-[#00ff88]">PAYMENT RECEIVED.</h1>
-      <p className="text-gray-400 max-w-md text-center mb-8">
-        Your Osiris Audit has been initiated. We will email you within 24 hours to collect your repository details and begin the scan.
-      </p>
-      <Link href="/" className="border border-[#00ff88] px-4 py-2 hover:bg-[#00ff88] hover:text-black transition-colors">
-        RETURN TO TERMINAL
-      </Link>
-    </div>
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center px-6 py-16">
+      <div className="rounded-2xl border border-neutral-200 p-8 shadow-sm">
+        <h1 className="text-3xl font-semibold">Payment received</h1>
+        <p className="mt-3 text-sm text-neutral-600">
+          Your document has been routed through checkout and is ready for vault confirmation.
+        </p>
+        {sessionId ? (
+          <p className="mt-4 rounded-lg bg-neutral-100 px-3 py-2 text-xs text-neutral-600">
+            Stripe session: {sessionId}
+          </p>
+        ) : null}
+      </div>
+    </main>
   );
 }

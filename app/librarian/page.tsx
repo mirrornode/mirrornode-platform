@@ -1,101 +1,202 @@
-"use client";
+'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
+import { useMemo, useState } from 'react';
+import { createClient } from '@/utils/supabase/client';
+
+type IngestResponse = {
+  success: boolean;
+  documentId: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH';
+  quote: number;
+  checkoutTier: 'tier1' | 'tier2' | 'tier3';
+  message?: string;
+  error?: string;
+};
+
+const tierCopy: Record<IngestResponse['checkoutTier'], string> = {
+  tier1: 'Basic structural synthesis',
+  tier2: 'Standard Osiris audit',
+  tier3: 'Full lattice execution',
+};
 
 export default function LibrarianPage() {
+  const supabase = useMemo(() => createClient(), []);
   const [file, setFile] = useState<File | null>(null);
-  const [status, setStatus] = useState<string>("READY FOR INGESTION");
-  const [logs, setLogs] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
+  const [result, setResult] = useState<IngestResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      setFile(e.dataTransfer.files[0]);
+  const handleIngest = async () => {
+    setError(null);
+    setResult(null);
+
+    if (!file) {
+      setError('Choose a document first.');
+      return;
+    }
+
+    if (!supabase) {
+      setError('Supabase is not configured.');
+      return;
+    }
+
+    setIsUploading(true);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        setError('You must be signed in before ingesting a document.');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/librarian/ingest', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: formData,
+      });
+
+      const data = (await response.json()) as IngestResponse & { error?: string };
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Ingest failed.');
+      }
+
+      setResult(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ingest failed.');
+    } finally {
+      setIsUploading(false);
     }
   };
 
-  const handleUpload = async () => {
-    if (!file) return;
-    setStatus("UPLOADING...");
-    setLogs((prev) => [...prev, `Initiating upload for: ${file.name}`]);
+  const handleCheckout = async () => {
+    if (!result) return;
 
-    const formData = new FormData();
-    formData.append('file', file);
+    if (!supabase) {
+      setError('Supabase is not configured.');
+      return;
+    }
+
+    setIsCheckoutLoading(true);
+    setError(null);
 
     try {
-      const res = await fetch('/api/librarian/ingest', {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-      if (res.ok) {
-        setStatus("INDEXED");
-        setLogs((prev) => [...prev, data.message]);
-      } else {
-        setStatus("ERROR");
-        setLogs((prev) => [...prev, `Error: ${data.error}`]);
+      if (!session?.access_token) {
+        throw new Error('You must be signed in before checkout.');
       }
+
+      const response = await fetch('/api/stripe/create-checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          documentId: result.documentId,
+          severity: result.severity,
+          quote: result.quote,
+          checkoutTier: result.checkoutTier,
+          mode: 'payment',
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data?.url) {
+        throw new Error(data?.error || 'Checkout initialization failed.');
+      }
+
+      window.location.href = data.url;
     } catch (err) {
-      console.error(err);
-      console.error(err);
-      setStatus("ERROR");
-      setLogs((prev) => [...prev, "Network error occurred."]);
+      setError(err instanceof Error ? err.message : 'Checkout failed.');
+    } finally {
+      setIsCheckoutLoading(false);
     }
-    setFile(null);
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-[#e0e0e0] font-mono p-8 flex flex-col gap-6 max-w-3xl mx-auto">
-      <header className="flex justify-between items-center border-b border-[#222] pb-4">
-        <div className="flex items-center gap-4">
-          <span className="text-[0.65rem] tracking-widest text-[#555] border border-[#333] px-2 py-1 rounded-sm">NODE 5</span>
-          <h1 className="text-2xl font-bold tracking-widest text-white m-0">LIBRARIAN</h1>
-          <span className="text-xs text-[#444] tracking-wider">INDEX & INGESTION</span>
-        </div>
-        <Link href="/" className="text-xs text-[#888] hover:text-[#00ff88] transition-colors border border-[#333] px-3 py-1 rounded-sm">
-          [ TERMINAL ]
-        </Link>
-      </header>
+    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-16">
+      <div className="space-y-2">
+        <h1 className="text-3xl font-semibold">Librarian</h1>
+        <p className="text-sm text-neutral-500">
+          Upload a document, run MIRRORNODE triage, and route it into the paid audit path.
+        </p>
+      </div>
 
-      <section 
-        onDragOver={(e) => e.preventDefault()} 
-        onDrop={handleDrop}
-        className="border-2 border-dashed border-[#333] p-12 flex flex-col items-center justify-center gap-4 rounded-md bg-[#111] hover:border-[#00ff88] transition-colors"
-      >
-        <span className="text-[#666] tracking-widest text-sm">DROP FILES HERE</span>
-        <span className="text-[#444] text-xs">or</span>
-        <input 
-          type="file" 
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
-          className="text-xs text-[#888] file:bg-[#1a1a1a] file:text-[#00ff88] file:border-none file:px-4 file:py-2 file:mr-4 file:cursor-pointer"
-        />
-        {file && (
-          <div className="mt-4 p-4 border border-[#00ff88] bg-black text-[#00ff88] text-xs flex items-center justify-between w-full max-w-md">
-            <span className="truncate">{file.name}</span>
-            <button onClick={handleUpload} className="bg-[#00ff88] text-black px-4 py-1 font-bold ml-4 hover:bg-white transition-colors">
-              INGEST
+      <section className="rounded-2xl border border-neutral-200 p-6 shadow-sm">
+        <div className="space-y-4">
+          <input
+            type="file"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            className="block w-full text-sm"
+          />
+
+          <button
+            type="button"
+            onClick={handleIngest}
+            disabled={!file || isUploading}
+            className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {isUploading ? 'Ingesting…' : 'Ingest document'}
+          </button>
+        </div>
+      </section>
+
+      {error ? (
+        <section className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </section>
+      ) : null}
+
+      {result ? (
+        <section className="rounded-2xl border border-neutral-200 p-6 shadow-sm">
+          <div className="space-y-3">
+            <h2 className="text-xl font-semibold">Triage result</h2>
+            <p className="text-sm text-neutral-600">{result.message}</p>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-neutral-200 p-4">
+                <div className="text-xs uppercase tracking-wide text-neutral-500">Severity</div>
+                <div className="mt-1 text-lg font-semibold">{result.severity}</div>
+              </div>
+
+              <div className="rounded-xl border border-neutral-200 p-4">
+                <div className="text-xs uppercase tracking-wide text-neutral-500">Quote</div>
+                <div className="mt-1 text-lg font-semibold">${result.quote}</div>
+              </div>
+
+              <div className="rounded-xl border border-neutral-200 p-4">
+                <div className="text-xs uppercase tracking-wide text-neutral-500">Tier</div>
+                <div className="mt-1 text-lg font-semibold">{tierCopy[result.checkoutTier]}</div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCheckout}
+              disabled={isCheckoutLoading}
+              className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {isCheckoutLoading
+                ? 'Redirecting…'
+                : `Continue to checkout — $${result.quote}`}
             </button>
           </div>
-        )}
-      </section>
-
-      <section className="border border-[#1e1e1e] rounded-md overflow-hidden">
-        <div className="flex justify-between items-center bg-[#111] px-4 py-2 border-b border-[#1e1e1e]">
-          <span className="text-[0.65rem] tracking-widest text-[#555]">AGENT STATUS</span>
-          <span className={`text-[0.6rem] ${status === 'INDEXED' ? 'text-[#00ff88]' : status === 'ERROR' ? 'text-red-500' : 'text-[#333]'}`}>{status}</span>
-        </div>
-        <div className="p-4 max-h-[200px] overflow-y-auto bg-[#0d0d0d] flex flex-col gap-1">
-          {logs.length === 0 ? (
-            <span className="text-xs text-[#333]">no ingestion logs yet</span>
-          ) : (
-            logs.map((log, i) => (
-              <span key={i} className="text-[0.75rem] text-[#666]">&gt; {log}</span>
-            ))
-          )}
-        </div>
-      </section>
-    </div>
+        </section>
+      ) : null}
+    </main>
   );
 }
