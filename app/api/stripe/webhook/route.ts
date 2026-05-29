@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import type Stripe from 'stripe';
 import { Pinecone } from '@pinecone-database/pinecone';
 import { getStripe } from '@/utils/stripe';
+import { createServiceSupabase } from '@/utils/supabase/admin';
 
 export const runtime = 'nodejs';
 
@@ -40,6 +41,31 @@ async function markVaulted(documentId: string, paidContext: Record<string, strin
   });
 }
 
+async function recordTransaction(session: Stripe.Checkout.Session) {
+  const supabase = createServiceSupabase();
+  const { error } = await supabase.from('transactions').upsert(
+    {
+      stripe_session_id: session.id,
+      stripe_payment_intent_id:
+        typeof session.payment_intent === 'string' ? session.payment_intent : null,
+      user_id: session.metadata?.user_id ?? null,
+      document_id: session.metadata?.document_id ?? null,
+      severity: session.metadata?.severity ?? null,
+      checkout_tier: session.metadata?.checkout_tier ?? null,
+      amount_usd: (session.amount_total ?? 0) / 100,
+      flow: session.metadata?.flow ?? 'librarian-audit',
+      payment_status: session.payment_status,
+      customer_email: session.customer_email,
+      paid_at: new Date().toISOString(),
+    },
+    { onConflict: 'stripe_session_id' }
+  );
+
+  if (error) {
+    console.error('Failed to record transaction:', error);
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.text();
@@ -70,6 +96,45 @@ export async function POST(req: Request) {
           customer_id: typeof session.customer === 'string' ? session.customer : '',
         });
       }
+
+      await recordTransaction(session);
+    }
+
+    if (event.type === 'checkout.session.expired') {
+      const session = event.data.object as Stripe.Checkout.Session;
+      console.warn('Session expired:', session.id, session.metadata?.document_id);
+    }
+
+    if (event.type === 'charge.refunded') {
+      const charge = event.data.object as Stripe.Charge;
+      const paymentIntentId =
+        typeof charge.payment_intent === 'string' ? charge.payment_intent : null;
+
+      if (paymentIntentId) {
+        const supabase = createServiceSupabase();
+        const { error } = await supabase
+          .from('transactions')
+          .update({
+            payment_status: 'refunded',
+            refunded_at: new Date().toISOString(),
+          })
+          .eq('stripe_payment_intent_id', paymentIntentId);
+
+        if (error) {
+          console.error('Failed to mark transaction refunded:', error);
+        }
+      }
+    }
+
+    if (event.type === 'payment_intent.payment_failed') {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      console.error('Payment failed:', pi.id, pi.last_payment_error?.message);
+    }
+
+    if (event.type === 'charge.dispute.created') {
+      const dispute = event.data.object as Stripe.Dispute;
+      console.error('DISPUTE OPENED:', dispute.id, dispute.amount, dispute.reason);
+      // TODO: flag document in Supabase, notify operator
     }
 
     if (
