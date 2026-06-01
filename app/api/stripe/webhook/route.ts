@@ -6,6 +6,7 @@ import { getStripe } from '@/utils/stripe';
 import { createServiceSupabase } from '@/utils/supabase/admin';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 const pineconeApiKey = process.env.PINECONE_API_KEY;
 const pineconeIndexName = process.env.PINECONE_INDEX_NAME || 'mirrornode-vault';
