@@ -1,32 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { stripeEnv } from '@/lib/env/stripe';
+import { getUserFromBearer } from '@/utils/supabase/server';
 
 export async function POST(req: NextRequest) {
-  const stripe = new Stripe(stripeEnv.STRIPE_SECRET_KEY, {
-    apiVersion: '2026-05-27.dahlia',
-  });
-
   try {
-    const body = await req.json();
-    const { priceId, userId } = body as { priceId: string; userId: string };
+    const { user, error: authError } = await getUserFromBearer(req);
 
-    if (!priceId || !userId) {
-      return NextResponse.json(
-        { error: 'priceId and userId are required' },
-        { status: 400 }
-      );
+    if (!user) {
+      return NextResponse.json({ error: authError }, { status: 401 });
     }
 
+    const stripe = new Stripe(stripeEnv.STRIPE_SECRET_KEY, {
+      apiVersion: '2026-05-27.dahlia',
+    });
+
+    const priceId = stripeEnv.STRIPE_AUDIT_PRICE_ID;
+    const origin = process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;
+
     const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
+      mode: 'payment',
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       metadata: {
-        user_id: userId,
+        user_id: user.id,
+        flow: 'osiris-audit-v1',
       },
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/`,
+      customer_email: user.email ?? undefined,
+      success_url: `${origin}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/audit?canceled=1`,
     });
 
     return NextResponse.json({ url: session.url });
