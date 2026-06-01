@@ -3,7 +3,7 @@ import Stripe from 'stripe';
 import { stripeEnv } from '@/lib/env/stripe';
 
 const stripe = new Stripe(stripeEnv.STRIPE_SECRET_KEY, {
-  apiVersion: '2025-03-31.basil',
+  apiVersion: '2026-05-27.dahlia',
 });
 
 export async function POST(req: NextRequest) {
