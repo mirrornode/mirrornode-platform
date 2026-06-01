@@ -1,6 +1,7 @@
 /**
- * lib/env/stripe.ts — Stripe + Supabase env guard.
+ * lib/env/stripe.ts – Stripe + Supabase env guard.
  * Import ONLY in Stripe/commerce routes.
+ * Uses lazy getters so env vars are read at runtime, not build time.
  */
 
 function requireServerEnv(key: string): string {
@@ -20,10 +21,10 @@ function requireServerEnv(key: string): string {
 }
 
 export const stripeEnv = {
-  STRIPE_SECRET_KEY: requireServerEnv('STRIPE_SECRET_KEY'),
-  STRIPE_WEBHOOK_SECRET: requireServerEnv('STRIPE_WEBHOOK_SECRET'),
-  SUPABASE_URL: requireServerEnv('SUPABASE_URL'),
-  SUPABASE_SERVICE_ROLE_KEY: requireServerEnv('SUPABASE_SERVICE_ROLE_KEY'),
+  get STRIPE_SECRET_KEY() { return requireServerEnv('STRIPE_SECRET_KEY'); },
+  get STRIPE_WEBHOOK_SECRET() { return requireServerEnv('STRIPE_WEBHOOK_SECRET'); },
+  get SUPABASE_URL() { return requireServerEnv('SUPABASE_URL'); },
+  get SUPABASE_SERVICE_ROLE_KEY() { return requireServerEnv('SUPABASE_SERVICE_ROLE_KEY'); },
 } as const;
 
 export type StripeEnv = typeof stripeEnv;

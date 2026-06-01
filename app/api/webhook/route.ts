@@ -3,18 +3,16 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { stripeEnv } from '@/lib/env/stripe';
 
-export const config = { api: { bodyParser: false } };
-
-const stripe = new Stripe(stripeEnv.STRIPE_SECRET_KEY, {
-  apiVersion: '2025-03-31.basil',
-});
-
-const supabase = createClient(
-  stripeEnv.SUPABASE_URL,
-  stripeEnv.SUPABASE_SERVICE_ROLE_KEY
-);
-
 export async function POST(req: NextRequest) {
+  const stripe = new Stripe(stripeEnv.STRIPE_SECRET_KEY, {
+    apiVersion: '2026-05-27.dahlia',
+  });
+
+  const supabase = createClient(
+    stripeEnv.SUPABASE_URL,
+    stripeEnv.SUPABASE_SERVICE_ROLE_KEY
+  );
+
   const rawBody = await req.text();
   const sig = req.headers.get('stripe-signature');
 
@@ -37,7 +35,7 @@ export async function POST(req: NextRequest) {
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
-    const userId = session.metadata?.uuser_id;
+    const userId = session.metadata?.user_id;
 
     if (userId) {
       const { error } = await supabase
