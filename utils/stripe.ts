@@ -10,7 +10,9 @@ export function getStripe(): Stripe {
   }
 
   if (!stripeClient) {
-    stripeClient = new Stripe(secretKey);
+    stripeClient = new Stripe(secretKey, {
+      apiVersion: '2026-05-27.dahlia',
+    });
   }
 
   return stripeClient;
