@@ -23,6 +23,7 @@ function requireServerEnv(key: string): string {
 export const stripeEnv = {
   get STRIPE_SECRET_KEY() { return requireServerEnv('STRIPE_SECRET_KEY'); },
   get STRIPE_WEBHOOK_SECRET() { return requireServerEnv('STRIPE_WEBHOOK_SECRET'); },
+  get STRIPE_AUDIT_PRICE_ID() { return requireServerEnv('STRIPE_AUDIT_PRICE_ID'); },
   get SUPABASE_URL() { return requireServerEnv('SUPABASE_URL'); },
   get SUPABASE_SERVICE_ROLE_KEY() { return requireServerEnv('SUPABASE_SERVICE_ROLE_KEY'); },
 } as const;
