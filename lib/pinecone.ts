@@ -2,16 +2,22 @@
  * lib/pinecone.ts
  * TypeScript-side Pinecone singleton for mirrornode-platform.
  * All Next.js API routes use this — do not instantiate Pinecone directly elsewhere.
+ *
+ * NOTE: env is checked lazily (inside getPinecone) so Next.js build-time
+ * module evaluation does not throw when PINECONE_API_KEY is absent.
  */
 import { Pinecone } from '@pinecone-database/pinecone';
 
-if (!process.env.PINECONE_API_KEY) {
-  throw new Error('PINECONE_API_KEY is not set');
-}
+let _pinecone: Pinecone | null = null;
 
-export const pinecone = new Pinecone({
-  apiKey: process.env.PINECONE_API_KEY,
-});
+export function getPinecone(): Pinecone {
+  if (!_pinecone) {
+    const apiKey = process.env.PINECONE_API_KEY;
+    if (!apiKey) throw new Error('PINECONE_API_KEY is not set');
+    _pinecone = new Pinecone({ apiKey });
+  }
+  return _pinecone;
+}
 
 export const PINECONE_INDEX = process.env.PINECONE_INDEX_NAME ?? 'mirrornode-vault';
 

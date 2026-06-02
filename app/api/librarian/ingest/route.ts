@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getUserFromBearer } from '@/utils/supabase/server';
-import { pinecone, PINECONE_INDEX, NS } from '@/lib/pinecone';
+import { getPinecone, PINECONE_INDEX, NS } from '@/lib/pinecone';
 import { embedText, extractText } from '@/lib/embeddings';
 
 function determineTier(fileSize: number) {
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     const vector = await embedText(`filename: ${file.name}\n\n${text}`);
 
     // 5. Upsert to mirrornode-vault under the librarian namespace
-    const index = pinecone.Index(PINECONE_INDEX);
+    const index = getPinecone().Index(PINECONE_INDEX);
     await index.namespace(NS.librarian).upsert({
       records: [
         {
