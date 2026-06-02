@@ -35,6 +35,11 @@ export default function ThothPage() {
       return;
     }
 
+    if (!supabase) {
+      setError('Supabase client is not configured.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
