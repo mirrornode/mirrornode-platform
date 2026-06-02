@@ -28,39 +28,39 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No document provided.' }, { status: 400 });
     }
 
-    // 3. Triage (size-based for now; semantic triage can replace this later)
+    // 3. Triage
     const { severity, quote, checkoutTier } = determineTier(file.size);
     const documentId = `doc_${user.id}_${Date.now()}`;
 
     // 4. Extract text → embed
     const text = await extractText(file);
-    const vector = await embedText(
-      `filename: ${file.name}\n\n${text}`
-    );
+    const vector = await embedText(`filename: ${file.name}\n\n${text}`);
 
     // 5. Upsert to mirrornode-vault under the librarian namespace
     const index = pinecone.Index(PINECONE_INDEX);
-    await index.namespace(NS.librarian).upsert([
-      {
-        id: documentId,
-        values: vector,
-        metadata: {
-          owner_id: user.id,
-          vaulted: false,
-          paid: false,
-          filename: file.name,
-          mime_type: file.type || 'application/octet-stream',
-          bytes: file.size,
-          severity,
-          quote,
-          checkout_tier: checkoutTier,
-          source: 'librarian',
-          ingested_at: new Date().toISOString(),
+    await index.namespace(NS.librarian).upsert({
+      records: [
+        {
+          id: documentId,
+          values: vector,
+          metadata: {
+            owner_id: user.id,
+            vaulted: false,
+            paid: false,
+            filename: file.name,
+            mime_type: file.type || 'application/octet-stream',
+            bytes: file.size,
+            severity,
+            quote,
+            checkout_tier: checkoutTier,
+            source: 'librarian',
+            ingested_at: new Date().toISOString(),
+          },
         },
-      },
-    ]);
+      ],
+    });
 
-    // 6. Return triage result to the UI
+    // 6. Return triage result
     return NextResponse.json({
       success: true,
       documentId,
