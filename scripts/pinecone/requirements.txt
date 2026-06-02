@@ -1,0 +1,7 @@
+# Pinecone integration dependencies
+# Install into .venv from repo root:
+#   pip install -r scripts/pinecone/requirements.txt
+pinecone>=9.0.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+typing-extensions>=4.0.0
