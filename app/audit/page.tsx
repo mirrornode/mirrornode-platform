@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { OSIRIS_AUDIT_PAYMENT_LINK } from "@/lib/links";
+import AuditCheckoutButton from "./AuditCheckoutButton";
 
 export const metadata = {
   title: "Osiris Audit v1 — MIRRORNODE",
@@ -33,12 +33,7 @@ export default function AuditPage() {
       </section>
 
       <section className="mb-12">
-        <a
-          href={OSIRIS_AUDIT_PAYMENT_LINK}
-          className="inline-block rounded-md bg-white px-6 py-3 text-base font-semibold text-black transition hover:bg-zinc-200"
-        >
-          Pay $149 — Begin audit
-        </a>
+        <AuditCheckoutButton />
         <p className="mt-3 text-sm text-zinc-500">
           Secure checkout via Stripe. One-time payment.
         </p>
