@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
     const userId = session.metadata?.user_id;
+    const flow = session.metadata?.flow;
 
     if (userId) {
       const { error } = await supabase
@@ -50,6 +51,26 @@ export async function POST(req: NextRequest) {
 
       if (error) {
         console.error('[webhook] Supabase upsert error:', error.message);
+        return NextResponse.json({ error: 'DB write failed' }, { status: 500 });
+      }
+    } else if (flow === 'osiris-audit-v1') {
+      const { error } = await supabase
+        .from('guest_audit_purchases')
+        .upsert(
+          {
+            stripe_customer_id:
+              typeof session.customer === 'string' ? session.customer : session.customer?.id ?? null,
+            stripe_session_id: session.id,
+            customer_email: session.customer_details?.email ?? null,
+            flow,
+            status: session.payment_status || session.status || 'completed',
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'stripe_session_id' }
+        );
+
+      if (error) {
+        console.error('[webhook] Guest audit purchase upsert error:', error.message);
         return NextResponse.json({ error: 'DB write failed' }, { status: 500 });
       }
     }
