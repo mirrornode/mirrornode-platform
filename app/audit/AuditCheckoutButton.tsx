@@ -1,38 +1,18 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { createClient } from '@/utils/supabase/client';
+import { useState } from 'react';
 
 export default function AuditCheckoutButton() {
-  const supabase = useMemo(() => createClient(), []);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleCheckout() {
     setError(null);
-
-    if (!supabase) {
-      setError('Checkout is unavailable: Supabase is not configured.');
-      return;
-    }
-
     setIsLoading(true);
 
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session?.access_token) {
-        setError('Sign in before starting the audit checkout.');
-        return;
-      }
-
       const response = await fetch('/api/checkout', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
       });
 
       const data = (await response.json()) as { url?: string; error?: string };
