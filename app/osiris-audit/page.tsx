@@ -1,10 +1,16 @@
 import Link from "next/link";
-import AuditCheckoutButton from "../audit/AuditCheckoutButton";
+import OsirisAuditCheckoutButton from "./OsirisAuditCheckoutButton";
 
 export const metadata = {
   title: "Osiris Audit v1 | Seraphyth Dynamics",
   description:
     "A one-pass structural audit of your AI system, workflow, or automation stack.",
+  openGraph: {
+    title: "Osiris Audit v1 | Seraphyth Dynamics",
+    description:
+      "A one-pass structural audit of your AI system, workflow, or automation stack.",
+    type: "website",
+  },
 };
 
 export default function OsirisAuditPage() {
@@ -60,7 +66,7 @@ export default function OsirisAuditPage() {
       </section>
 
       <section className="mb-12">
-        <AuditCheckoutButton />
+        <OsirisAuditCheckoutButton />
         <p className="mt-3 text-sm text-zinc-500">
           $149 USD. Secure checkout via Stripe. One-time payment.
         </p>
