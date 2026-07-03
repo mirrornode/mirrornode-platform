@@ -10,6 +10,11 @@ export async function POST(req: NextRequest) {
 
     const priceId = stripeEnv.STRIPE_AUDIT_PRICE_ID;
     const origin = process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;
+    const body = (await req.json().catch(() => ({}))) as { cancelPath?: string };
+    const cancelPath =
+      typeof body.cancelPath === 'string' && body.cancelPath.startsWith('/')
+        ? body.cancelPath
+        : '/audit?canceled=1';
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -19,7 +24,7 @@ export async function POST(req: NextRequest) {
         flow: 'osiris-audit-v1',
       },
       success_url: `${origin}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/audit?canceled=1`,
+      cancel_url: `${origin}${cancelPath}`,
     });
 
     return NextResponse.json({ url: session.url });
