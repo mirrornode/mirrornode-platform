@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AuditCheckoutButton from "./AuditCheckoutButton";
+import OsirisAuditSequence from "../../components/osiris/OsirisAuditSequence";
 
 export const metadata = {
   title: "Osiris Audit v1 — MIRRORNODE",
@@ -9,8 +10,8 @@ export const metadata = {
 
 export default function AuditPage() {
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16 text-zinc-100">
-      <header className="mb-12">
+    <main className="mx-auto max-w-5xl px-6 py-16 text-zinc-100">
+      <header className="mb-12 max-w-2xl">
         <p className="text-sm uppercase tracking-widest text-zinc-500">
           MIRRORNODE
         </p>
@@ -22,7 +23,9 @@ export default function AuditPage() {
         </p>
       </header>
 
-      <section className="mb-12">
+      <OsirisAuditSequence />
+
+      <section className="mb-12 max-w-2xl">
         <h2 className="text-xl font-semibold">What you get</h2>
         <ul className="mt-4 space-y-2 text-zinc-300">
           <li>— A written audit of your system&apos;s structural posture</li>
@@ -32,14 +35,14 @@ export default function AuditPage() {
         </ul>
       </section>
 
-      <section className="mb-12">
+      <section className="mb-12 max-w-2xl">
         <AuditCheckoutButton />
         <p className="mt-3 text-sm text-zinc-500">
           Secure checkout via Stripe. One-time payment.
         </p>
       </section>
 
-      <section className="mb-12">
+      <section className="mb-12 max-w-2xl">
         <h2 className="text-xl font-semibold">What happens after payment</h2>
         <ol className="mt-4 list-decimal space-y-3 pl-6 text-zinc-300">
           <li>You get a Stripe receipt at the email on your payment.</li>
@@ -49,7 +52,7 @@ export default function AuditPage() {
         </ol>
       </section>
 
-      <section className="mb-12">
+      <section className="mb-12 max-w-2xl">
         <h2 className="text-xl font-semibold">Manual-first, by design</h2>
         <p className="mt-4 text-zinc-300">
           v1 is intentionally hand-delivered. No dashboards, no portals,
@@ -59,7 +62,7 @@ export default function AuditPage() {
         </p>
       </section>
 
-      <footer className="mt-16 border-t border-zinc-800 pt-6 text-sm text-zinc-500">
+      <footer className="mt-16 max-w-2xl border-t border-zinc-800 pt-6 text-sm text-zinc-500">
         <Link href="/" className="hover:text-zinc-300">
           ← Back to MIRRORNODE
         </Link>
