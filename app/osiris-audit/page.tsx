@@ -1,5 +1,6 @@
 import Link from "next/link";
 import OsirisAuditCheckoutButton from "./OsirisAuditCheckoutButton";
+import OsirisAuditSequence from "../../components/osiris/OsirisAuditSequence";
 
 export const metadata = {
   title: "Osiris Audit v1 | Seraphyth Dynamics",
@@ -15,7 +16,7 @@ export const metadata = {
 
 export default function OsirisAuditPage() {
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16 text-zinc-100">
+    <main className="mx-auto max-w-5xl px-6 py-16 text-zinc-100">
       <header className="mb-12">
         <p className="text-sm uppercase tracking-widest text-zinc-500">
           Seraphyth Dynamics
@@ -32,6 +33,8 @@ export default function OsirisAuditPage() {
           of the system you are actually operating.
         </p>
       </header>
+
+      <OsirisAuditSequence />
 
       <section className="mb-12">
         <h2 className="text-xl font-semibold">What you get</h2>
