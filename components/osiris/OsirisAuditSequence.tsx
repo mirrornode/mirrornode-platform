@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-type StageSymbol = "intake" | "lattice" | "evidence" | "findings" | "delivery";
+type StageSymbol = "intake" | "scan" | "evidence" | "findings" | "delivery";
 
 const steps: Array<{
   title: string;
@@ -15,81 +15,81 @@ const steps: Array<{
 }> = [
   {
     title: "Intake",
-    panelTitle: "Declared context",
+    panelTitle: "Scope lock",
     symbol: "intake",
-    copy: "You share the system context, goals, visible friction, and any documents or screenshots that help explain the current state.",
-    collapsedSummary: "Context enters the audit without secrets or credentials.",
+    copy: "You provide the system summary, goals, visible friction, and up to 5 artifacts or links for review.",
+    collapsedSummary: "The audit starts by locking what is in scope.",
     boundary:
-      "Do not send secrets, private keys, passwords, or production credentials. The audit starts from declared context only.",
+      "No secrets, private keys, passwords, or production credentials are requested.",
     details: [
-      "System summary, goals, concerns, and friction points are collected.",
-      "Up to 5 primary artifacts or links are accepted for review.",
-      "The first pass separates what is known from what still needs clarification.",
+      "Collect system summary, goals, concerns, and friction points.",
+      "Accept up to 5 primary artifacts or links.",
+      "Separate declared context from anything that still needs clarification.",
     ],
   },
   {
-    title: "Structural Review",
-    panelTitle: "Operating shape",
-    symbol: "lattice",
-    copy: "The system shape is reviewed for roles, handoffs, bottlenecks, authority drift, workflow gaps, and unclear operating boundaries.",
-    collapsedSummary: "Roles, handoffs, bottlenecks, and fragile boundaries are traced.",
+    title: "Structure Scan",
+    panelTitle: "System shape",
+    symbol: "scan",
+    copy: "Osiris reviews the operating shape: tools, agents, prompts, docs, automations, handoffs, and ownership gaps.",
+    collapsedSummary: "The system is read as an operating stack.",
     boundary:
-      "This is review, not implementation. Findings may recommend changes, but no production action is taken.",
+      "This is diagnostic review, not implementation or production intervention.",
     details: [
-      "Prompts, agents, docs, automations, and handoffs are read as one operating system.",
-      "Load-bearing assumptions and weak transitions are identified.",
-      "Authority drift, duplicate lanes, and missing ownership points are surfaced.",
+      "Trace roles, handoffs, bottlenecks, and duplicate lanes.",
+      "Identify fragile transitions and missing ownership points.",
+      "Mark where more tools would increase confusion instead of capability.",
     ],
   },
   {
-    title: "Evidence Pass",
-    panelTitle: "Source clarity",
+    title: "Evidence Review",
+    panelTitle: "Proof trail",
     symbol: "evidence",
-    copy: "Claims, documents, screenshots, repo notes, and contradictions are separated into confirmed, partial, unknown, or needs-review categories.",
-    collapsedSummary: "Claims and artifacts are separated by evidence strength.",
+    copy: "Claims and artifacts are sorted by evidence strength so the final report does not blur confirmed facts with assumptions.",
+    collapsedSummary: "Claims are checked against supplied evidence.",
     boundary:
-      "Evidence review is source-grounded. It is not legal, compliance, or security certification.",
+      "Evidence review is not legal, compliance, or security certification.",
     details: [
-      "Artifacts are checked against the system story they are meant to support.",
-      "Contradictions, unsupported claims, and missing source context are marked clearly.",
-      "The audit distinguishes confirmed evidence from partial or unknown claims.",
+      "Compare artifacts against the system story they are meant to support.",
+      "Mark contradictions, missing context, and unsupported claims.",
+      "Separate confirmed, partial, unknown, and needs-review items.",
     ],
   },
   {
     title: "Findings",
     panelTitle: "Risk signal",
     symbol: "findings",
-    copy: "You receive the clearest risks, strengths, drift points, and opportunities organized into a short, prioritized sequence.",
-    collapsedSummary: "The strongest risks and opportunities are pulled into focus.",
+    copy: "The clearest strengths, risks, drift points, and near-term fixes are organized into a prioritized sequence.",
+    collapsedSummary: "The strongest risks and opportunities are pulled forward.",
     boundary:
-      "Recommendations remain advisory until you approve and route any implementation separately.",
+      "Recommendations remain advisory until implementation is separately approved and scoped.",
     details: [
-      "Likely failure modes are named in plain language.",
-      "Strengths are preserved so the system is not overcorrected.",
-      "Risks are prioritized by clarity, impact, and near-term usefulness.",
+      "Name likely failure modes in plain language.",
+      "Preserve strengths so the system is not overcorrected.",
+      "Prioritize risks by clarity, impact, and near-term usefulness.",
     ],
   },
   {
     title: "Delivery",
     panelTitle: "Audit packet",
     symbol: "delivery",
-    copy: "The audit is delivered as a concise report with the structural map, findings, and recommended next steps.",
-    collapsedSummary: "You receive one structured document with next actions.",
+    copy: "You receive one structured report with the system shape, findings, risk notes, and recommended next actions.",
+    collapsedSummary: "The final output is a usable audit document.",
     boundary:
-      "Delivery does not grant MIRRORNODE canon approval, registry authority, or automatic remediation.",
+      "Delivery does not include automatic remediation, canon approval, or ongoing consulting.",
     details: [
-      "The final document includes system shape, findings, risks, and next actions.",
-      "One clarification pass is included for factual issues or missed intake context.",
-      "Implementation can be scoped separately after the audit is accepted.",
+      "Deliver the final document with map, findings, risks, and next actions.",
+      "Include one clarification pass for factual issues or missed intake context.",
+      "Scope any implementation separately after the audit is accepted.",
     ],
   },
 ];
 
 const deliverables = [
-  "Structural map",
-  "Risk and drift notes",
-  "Prioritized next steps",
-  "Service boundary",
+  "System map",
+  "Risk notes",
+  "Next actions",
+  "Boundary summary",
 ];
 
 export default function OsirisAuditSequence() {
@@ -97,24 +97,28 @@ export default function OsirisAuditSequence() {
   const currentStep = steps[selectedStep];
 
   return (
-    <section className="my-12 overflow-hidden rounded-3xl border border-cyan-400/20 bg-zinc-950/80 p-4 shadow-[0_0_70px_rgba(34,211,238,0.08)] sm:p-6">
+    <section className="my-12 overflow-hidden rounded-3xl border border-amber-300/20 bg-zinc-950/85 p-4 shadow-[0_0_80px_rgba(245,158,11,0.09)] sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-4">
         <div>
-          <p className="text-xs uppercase tracking-[0.24em] text-cyan-200/80">
-            State to causality to intervention
+          <p className="text-xs uppercase tracking-[0.24em] text-amber-200/80">
+            Osiris HUD
           </p>
           <h2 className="mt-2 text-2xl font-semibold text-zinc-100">
-            Audit sequence
+            How the audit moves
           </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
+            A controlled diagnostic sequence from intake to delivery. Each stage
+            has a job, a boundary, and a clear output.
+          </p>
         </div>
-        <div className="rounded-full border border-cyan-300/20 bg-cyan-300/5 px-4 py-2 text-xs uppercase tracking-[0.18em] text-cyan-100">
-          {currentStep.title} selected
+        <div className="rounded-full border border-amber-300/25 bg-amber-300/10 px-4 py-2 text-xs uppercase tracking-[0.18em] text-amber-100">
+          {currentStep.title}
         </div>
       </div>
 
-      <div className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 sm:p-5">
+      <div className="mt-6 rounded-2xl border border-zinc-800 bg-black/30 p-4 sm:p-5">
         <div className="relative grid gap-3 sm:grid-cols-5">
-          <div className="absolute left-[10%] right-[10%] top-6 hidden h-px bg-gradient-to-r from-cyan-400/80 via-emerald-300/70 to-cyan-400/80 sm:block" />
+          <div className="absolute left-[10%] right-[10%] top-6 hidden h-px bg-gradient-to-r from-amber-300/80 via-cyan-300/70 to-emerald-300/80 sm:block" />
 
           {steps.map((step, index) => {
             const active = selectedStep === index;
@@ -127,15 +131,15 @@ export default function OsirisAuditSequence() {
                 onClick={() => setSelectedStep(index)}
                 className={`relative rounded-2xl border p-3 text-left transition sm:text-center ${
                   active
-                    ? "border-cyan-300/60 bg-cyan-300/10 shadow-[0_0_28px_rgba(34,211,238,0.16)]"
-                    : "border-transparent hover:border-cyan-300/30 hover:bg-cyan-300/5"
+                    ? "border-amber-300/60 bg-amber-300/10 shadow-[0_0_28px_rgba(245,158,11,0.16)]"
+                    : "border-transparent hover:border-amber-300/30 hover:bg-amber-300/5"
                 }`}
               >
                 <span
-                  className={`relative z-10 mb-2 grid h-12 w-12 place-items-center rounded-full border bg-zinc-950 text-sm font-semibold shadow-[0_0_24px_rgba(34,211,238,0.18)] sm:mx-auto ${
+                  className={`relative z-10 mb-2 grid h-12 w-12 place-items-center rounded-full border bg-zinc-950 text-sm font-semibold shadow-[0_0_24px_rgba(245,158,11,0.16)] sm:mx-auto ${
                     active
-                      ? "border-cyan-200 text-cyan-100"
-                      : "border-cyan-300/40 text-cyan-200/80"
+                      ? "border-amber-200 text-amber-100"
+                      : "border-amber-300/35 text-amber-200/75"
                   }`}
                 >
                   {index + 1}
@@ -151,22 +155,22 @@ export default function OsirisAuditSequence() {
         <div className="mt-6 grid gap-3 md:grid-cols-2">
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-zinc-600">
-              Current motion
+              Selected stage
             </p>
             <h3 className="mt-2 text-lg font-semibold text-zinc-100">
-              {currentStep.title}
+              {currentStep.panelTitle}
             </h3>
             <p className="mt-2 text-sm leading-6 text-zinc-400">
               {currentStep.copy}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-amber-300/20 bg-amber-300/5 p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-amber-200/70">
+          <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/5 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-cyan-200/70">
               Boundary
             </p>
             <h3 className="mt-2 text-lg font-semibold text-zinc-100">
-              What this stage does not do
+              What stays outside this audit
             </h3>
             <p className="mt-2 text-sm leading-6 text-zinc-400">
               {currentStep.boundary}
@@ -179,10 +183,10 @@ export default function OsirisAuditSequence() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-[0.22em] text-zinc-500">
-              Process lanes
+              Diagnostic lanes
             </p>
             <h3 className="mt-1 text-lg font-semibold text-zinc-100">
-              Select a lane to expand its audit detail
+              Click a stage to see what is actually reviewed
             </h3>
           </div>
 
@@ -210,8 +214,8 @@ export default function OsirisAuditSequence() {
                 onClick={() => setSelectedStep(index)}
                 className={`group min-h-[180px] rounded-2xl border p-4 text-left transition-all duration-300 ${
                   active
-                    ? "border-cyan-300/60 bg-cyan-300/10 shadow-[0_0_34px_rgba(34,211,238,0.16)] lg:flex-[2.45]"
-                    : "border-zinc-800 bg-zinc-950/70 hover:border-cyan-300/30 hover:bg-cyan-300/5 lg:flex-1"
+                    ? "border-amber-300/60 bg-amber-300/10 shadow-[0_0_34px_rgba(245,158,11,0.16)] lg:flex-[2.45]"
+                    : "border-zinc-800 bg-zinc-950/70 hover:border-amber-300/30 hover:bg-amber-300/5 lg:flex-1"
                 }`}
               >
                 <div className="flex items-start gap-3">
@@ -220,10 +224,10 @@ export default function OsirisAuditSequence() {
                   <div className="min-w-0">
                     <p
                       className={`text-xs uppercase tracking-[0.2em] ${
-                        active ? "text-cyan-100" : "text-zinc-600"
+                        active ? "text-amber-100" : "text-zinc-600"
                       }`}
                     >
-                      Lane {index + 1}
+                      Stage {index + 1}
                     </p>
                     <h4 className="mt-1 text-base font-semibold text-zinc-100">
                       {step.panelTitle}
@@ -237,8 +241,8 @@ export default function OsirisAuditSequence() {
                 {active ? (
                   <div className="mt-5 space-y-3">
                     <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
-                      <p className="text-xs uppercase tracking-[0.18em] text-cyan-200/70">
-                        Expanded detail
+                      <p className="text-xs uppercase tracking-[0.18em] text-amber-200/70">
+                        Review detail
                       </p>
                       <ul className="mt-3 space-y-2">
                         {step.details.map((detail) => (
@@ -246,16 +250,16 @@ export default function OsirisAuditSequence() {
                             key={detail}
                             className="grid grid-cols-[auto_1fr] gap-3 text-sm leading-6 text-zinc-300"
                           >
-                            <span className="mt-2 h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_14px_rgba(34,211,238,0.55)]" />
+                            <span className="mt-2 h-1.5 w-1.5 rounded-full bg-amber-300 shadow-[0_0_14px_rgba(245,158,11,0.55)]" />
                             <span>{detail}</span>
                           </li>
                         ))}
                       </ul>
                     </div>
 
-                    <div className="rounded-xl border border-amber-300/20 bg-amber-300/5 p-3 text-sm leading-6 text-zinc-400">
-                      <span className="font-medium text-amber-100/90">
-                        Boundary:
+                    <div className="rounded-xl border border-cyan-300/20 bg-cyan-300/5 p-3 text-sm leading-6 text-zinc-400">
+                      <span className="font-medium text-cyan-100/90">
+                        Guardrail:
                       </span>{" "}
                       {step.boundary}
                     </div>
@@ -283,8 +287,8 @@ function StageSymbolMark({
     <span
       className={`grid h-14 w-14 shrink-0 place-items-center rounded-2xl border transition ${
         active
-          ? "border-cyan-200/70 bg-cyan-300/15 text-cyan-100 shadow-[0_0_28px_rgba(34,211,238,0.22)]"
-          : "border-zinc-800 bg-black/30 text-zinc-500 group-hover:border-cyan-300/30 group-hover:text-cyan-200"
+          ? "border-amber-200/70 bg-amber-300/15 text-amber-100 shadow-[0_0_28px_rgba(245,158,11,0.22)]"
+          : "border-zinc-800 bg-black/30 text-zinc-500 group-hover:border-amber-300/30 group-hover:text-amber-200"
       }`}
     >
       <svg
@@ -307,7 +311,7 @@ function StageSymbolMark({
           </>
         ) : null}
 
-        {symbol === "lattice" ? (
+        {symbol === "scan" ? (
           <>
             <rect x="8" y="8" width="10" height="10" rx="2" />
             <rect x="30" y="8" width="10" height="10" rx="2" />
