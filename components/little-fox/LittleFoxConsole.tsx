@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   littleFoxArtifacts,
   littleFoxModules,
@@ -30,7 +31,7 @@ function Panel({
 }: {
   eyebrow: string;
   title: string;
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
 }) {
   return (
