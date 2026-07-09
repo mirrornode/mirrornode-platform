@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import OsirisRuntimeAdapterPanel from "./OsirisRuntimeAdapterPanel";
 
 type StageSymbol = "intake" | "scan" | "evidence" | "findings" | "delivery";
 
@@ -272,6 +273,8 @@ export default function OsirisAuditSequence() {
           })}
         </div>
       </div>
+
+      <OsirisRuntimeAdapterPanel />
     </section>
   );
 }
