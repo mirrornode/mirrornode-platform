@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { boundaryStates } from "@/content/mirrornode/boundaries";
 import type { PublicInspectorRecord } from "@/content/mirrornode/types";
 import { SurfaceBoundaryNotice } from "./SurfaceBoundaryNotice";
 import { SurfaceStateBadge } from "./SurfaceStateBadge";
@@ -13,8 +12,6 @@ const authorityLabels = {
 } as const;
 
 export function SurfaceNodeInspector({ node }: { node: PublicInspectorRecord }) {
-  const boundary = boundaryStates[node.exposureState];
-
   return (
     <aside className="rounded-lg border border-cyan-300/20 bg-slate-950/70 p-5 shadow-[inset_0_0_0_1px_rgba(103,232,249,0.05)]">
       <div className="flex items-start justify-between gap-4">
@@ -40,7 +37,7 @@ export function SurfaceNodeInspector({ node }: { node: PublicInspectorRecord }) 
         </div>
         <div>
           <dt className="font-mono text-[0.68rem] uppercase tracking-[0.16em] text-white/40">Evidence</dt>
-          <dd className="mt-1 text-white/75">{node.evidenceKind.replace("-", " ")}</dd>
+          <dd className="mt-1 capitalize text-white/75">{node.evidenceKind.replace("-", " ")}</dd>
         </div>
         {node.relations.length > 0 ? (
           <div>
@@ -56,14 +53,9 @@ export function SurfaceNodeInspector({ node }: { node: PublicInspectorRecord }) 
         ) : null}
       </dl>
 
-      <details className="mt-5 rounded-lg border border-white/10 bg-white/[0.03] p-3">
-        <summary className="cursor-pointer font-mono text-xs uppercase tracking-[0.14em] text-white/60">Boundary detail</summary>
-        <div className="mt-3">
-          <SurfaceBoundaryNotice state={node.exposureState} detail>
-            {boundary.detail}
-          </SurfaceBoundaryNotice>
-        </div>
-      </details>
+      <div className="mt-5">
+        <SurfaceBoundaryNotice state={node.exposureState} depth="detail" expandable />
+      </div>
 
       {node.ctaMode !== "none" && node.ctaHref && node.ctaLabel ? (
         <div className="mt-5">
