@@ -1,6 +1,21 @@
+import type { ExposureState } from "./types";
+
 export const processSequence = ["Input", "Routing", "Review", "Canon", "Output"];
 
-export const lanes = [
+export type PublicLane = {
+  slug: string;
+  title: string;
+  descriptor: string;
+  pipeline: readonly string[];
+  body: string;
+  status: "active" | "held" | "static" | "planned";
+  exposureState: ExposureState;
+  requiresAcknowledgement?: boolean;
+  ctaLabel?: string;
+  ctaHref?: string;
+};
+
+export const lanes: readonly PublicLane[] = [
   {
     slug: "overview",
     title: "Overview",
@@ -9,6 +24,9 @@ export const lanes = [
     body:
       "Mirrornode organizes how AI work moves through context, memory, routing, review, and delivery. It is not a chatbot wrapper or vague automation layer.",
     status: "active",
+    exposureState: "static",
+    ctaLabel: "View overview",
+    ctaHref: "#overview",
   },
   {
     slug: "audit",
@@ -18,6 +36,10 @@ export const lanes = [
     body:
       "Osiris Audit is one concrete lane: a bounded structural review with findings and recommendations, not autonomous remediation.",
     status: "active",
+    exposureState: "reviewed",
+    requiresAcknowledgement: true,
+    ctaLabel: "Review audit lane",
+    ctaHref: "#audit",
   },
   {
     slug: "agent-stack",
@@ -27,6 +49,7 @@ export const lanes = [
     body:
       "Held pending canonical manifest review. Agent authority wording will not be published from draft blueprint tables.",
     status: "held",
+    exposureState: "deferred",
   },
   {
     slug: "live-state",
@@ -36,6 +59,9 @@ export const lanes = [
     body:
       "This lane explains state categories. First pass is static and explanatory; no live metrics are shown.",
     status: "static",
+    exposureState: "static",
+    ctaLabel: "View state model",
+    ctaHref: "#live-state",
   },
   {
     slug: "mission",
@@ -45,6 +71,9 @@ export const lanes = [
     body:
       "Mirrornode exists to make AI coordination honest: structured review, declared authority, and coherent output.",
     status: "active",
+    exposureState: "reviewed",
+    ctaLabel: "View mission",
+    ctaHref: "#mission",
   },
   {
     slug: "technical",
@@ -54,6 +83,9 @@ export const lanes = [
     body:
       "Technical material exposes architecture and interfaces without implying unreleased production capability.",
     status: "active",
+    exposureState: "reviewed",
+    ctaLabel: "View technical lane",
+    ctaHref: "#technical",
   },
   {
     slug: "media",
@@ -63,6 +95,9 @@ export const lanes = [
     body:
       "Media examples must identify whether they are mock or real, when they were created, and whether they reflect current implementation.",
     status: "static",
+    exposureState: "static",
+    ctaLabel: "View media guidance",
+    ctaHref: "#media",
   },
   {
     slug: "community",
@@ -72,5 +107,6 @@ export const lanes = [
     body:
       "Community begins lightweight: contact, updates, and structured request paths. Open community board is deferred.",
     status: "planned",
+    exposureState: "deferred",
   },
-] as const;
+];
