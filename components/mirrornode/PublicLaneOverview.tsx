@@ -1,5 +1,4 @@
 import { lanes } from "@/content/mirrornode/lanes";
-import { boundaryCopy } from "@/content/mirrornode/boundaries";
 import { SurfaceBoundaryNotice } from "./SurfaceBoundaryNotice";
 
 export function PublicLaneOverview() {
@@ -22,7 +21,7 @@ export function PublicLaneOverview() {
         ))}
       </div>
       <div className="mt-5">
-        <SurfaceBoundaryNotice tone="warning">{boundaryCopy.static}</SurfaceBoundaryNotice>
+        <SurfaceBoundaryNotice state="static" />
       </div>
     </section>
   );

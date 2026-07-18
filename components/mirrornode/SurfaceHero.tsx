@@ -24,31 +24,23 @@ export function SurfaceHero() {
 
         <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)] lg:items-end">
           <div className="max-w-3xl">
-            <p className="mb-4 font-mono text-xs uppercase tracking-[0.24em] text-cyan-200">
-              Visual command surface
-            </p>
+            <p className="mb-4 font-mono text-xs uppercase tracking-[0.24em] text-cyan-200">Governed public surface</p>
             <h1 className="max-w-4xl text-5xl font-semibold leading-[0.92] tracking-tight text-white md:text-7xl">
-              This is how complex AI work becomes traceable.
+              Enter lanes. Inspect nodes. Understand the system.
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-white/65">
-              Mirrornode organizes context, memory, routing, review, authority boundaries, and delivery surfaces into a governed workflow.
+              MIRRORNODE presents lanes, relationships, and reviewed public representations of the Agent Stack without flattening governance, execution, or human authority boundaries.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
-              <a
-                href="#surface"
-                className="rounded-lg bg-cyan-200 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-100"
-              >
-                Explore the System
+              <a href="#surface" className="rounded-lg bg-cyan-200 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-100">
+                Explore the system
               </a>
-              <Link
-                href="/audit"
-                className="rounded-lg border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white/85 transition hover:border-white/30"
-              >
-                Start with an Osiris Audit
+              <Link href="/audit" className="rounded-lg border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white/85 transition hover:border-white/30">
+                Review Osiris Audit
               </Link>
             </div>
           </div>
-          <SurfaceBoundaryNotice>{boundaryCopy.hero}</SurfaceBoundaryNotice>
+          <SurfaceBoundaryNotice state="static">{boundaryCopy.heroStack}</SurfaceBoundaryNotice>
         </div>
       </div>
     </section>
