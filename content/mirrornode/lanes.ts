@@ -2,7 +2,7 @@ import type { ExposureState } from "./types";
 
 export const processSequence = ["Input", "Routing", "Review", "Canon", "Output"];
 
-type PublicLane = {
+export type PublicLane = {
   slug: string;
   title: string;
   descriptor: string;
@@ -15,7 +15,7 @@ type PublicLane = {
   ctaHref?: string;
 };
 
-export const lanes = [
+export const lanes: readonly PublicLane[] = [
   {
     slug: "overview",
     title: "Overview",
@@ -109,4 +109,4 @@ export const lanes = [
     status: "planned",
     exposureState: "deferred",
   },
-] as const satisfies readonly PublicLane[];
+];
