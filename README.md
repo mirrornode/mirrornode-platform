@@ -1,49 +1,70 @@
 # MIRRORNODE
 
-> Distributed AI orchestration lattice — coordinating six agents across quantum-cognitive bridges.
+> Public projection and interaction surface for the MIRRORNODE orchestration system.
 
 ## Architecture
 
-MIRRORNODE is a living orchestration platform built on Next.js 16 + React 19. Six specialized agents operate as a unified lattice, each handling a distinct cognitive domain.
+`mirrornode-platform` is the public-facing Next.js application for MIRRORNODE.
 
-| Agent | Role | Domain |
-|-------|------|--------|
-| **Lucian** | Core Orchestrator | Lattice coordination, cognitive routing, system coherence |
-| **Osiris** | Payment & Commerce | Stripe integration, transactions, financial state |
-| **Hermes** | Messenger & API Bridge | Webhooks, external APIs, inter-agent messaging |
-| **Thoth** | Knowledge & Memory | Persistent memory, knowledge graph, cross-agent context |
-| **Theia** | Vision & Interface | UI/UX intelligence, front-end surfaces, visual rendering |
-| **Ptah** | Builder & Infrastructure | DevOps, deployments, scaffolding, infrastructure automation |
+It is not the canonical governance surface and it is not the authoritative agent runtime.
+
+Current authority boundaries:
+
+- `MIRRORNODE-CORE-HUB` — governance, canon, schemas, promotion records
+- `mirrornode-agent-runtime` — controlled agent execution and approval-gated runtime
+- `mirrornode-operator-console` — private Operator control surface
+- `mirrornode-platform` — public projection, service pages, and approved runtime-facing interfaces
+
+## Current Runtime Agents
+
+The current headless runtime allowlists eight agents:
+
+| Agent | Runtime role |
+|---|---|
+| Hermes | Coordination and messaging |
+| Lucian | Orchestration |
+| Merlin | Planning / orchestration |
+| Oracle | Analysis / advisory |
+| Osiris | Audit |
+| Ptah | Implementation |
+| Theia | Integration / interface |
+| Thoth | Security / knowledge review |
+
+Runtime truth should be verified against `mirrornode-agent-runtime` rather than inferred from this README.
 
 ## Stack
 
-- **Framework**: Next.js 16 (App Router)
-- **Runtime**: React 19
-- **Styling**: Tailwind CSS v4
-- **Language**: TypeScript
-- **Deploy**: Vercel (Node 20.x)
+- **Framework:** Next.js 16
+- **Runtime UI:** React 19
+- **Language:** TypeScript
+- **Styling:** Tailwind CSS
+- **Deployment:** Vercel
+- **Commerce:** Stripe
+- **Data services:** Supabase
 
-## Routes
+## Current Public Surfaces
 
-```
-/                    — Platform landing + agent lattice overview
-/dashboard           — System dashboard + live agent status
-/agents/[id]         — Individual agent detail pages
-```
+The repository includes public and runtime-facing routes such as:
+
+- `/`
+- `/osiris-audit`
+- `/little-fox`
+- runtime proxy/API surfaces
+
+Route availability should be verified from the current application source and production deployment rather than treated as fixed by this document.
 
 ## Local Development
 
 ```bash
 npm install
 npm run dev
-```
 
-Open [http://localhost:3000](http://localhost:3000).
+##Governance Boundary
 
-## Project
+This repository may expose approved public projections of MIRRORNODE state.
 
-Built by [Sean Malm](https://github.com/mirrornode) — INPhase Resplendence Cognition.
+It must not independently redefine canonical governance, Operator authority, runtime policy, or private continuity records.
 
----
+See ' MIRRORNODE-CORE-HUB' for ratified governance and promotion records.
 
-`BUILD 0.1.0` · `LATTICE v0.1` · `6/6 AGENTS NOMINAL`
+MIRRORNODE — public projection surface
