@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
       metadata: {
         flow: 'osiris-audit-v1',
       },
-      success_url: `${origin}/success?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${origin}/osiris-audit/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}${cancelPath}`,
     });
 
