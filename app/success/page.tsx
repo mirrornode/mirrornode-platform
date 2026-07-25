@@ -20,11 +20,11 @@ export default async function SuccessPage({ searchParams }: SuccessPageProps) {
           Osiris Audit v1
         </p>
         <h1 className="mt-3 text-3xl font-semibold text-neutral-950">
-          {sessionId ? 'Payment received' : 'Checkout confirmation missing'}
+          {sessionId ? 'Complete your audit intake' : 'Checkout confirmation missing'}
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-neutral-600">
           {sessionId
-            ? 'Complete the intake below so the structural review can begin. The target delivery window is 3 business days after complete intake.'
+            ? 'Complete the intake below. Your paid Osiris Audit checkout will be verified securely when you submit.'
             : 'We could not verify a Stripe checkout session from this URL.'}
         </p>
 
