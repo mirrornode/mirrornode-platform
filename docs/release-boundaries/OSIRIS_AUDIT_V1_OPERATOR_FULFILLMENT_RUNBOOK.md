@@ -30,7 +30,8 @@ Before work begins, confirm the private `guest_audit_purchases` record shows:
 - payment `status = paid`
 - customer email is present
 - `fulfillment_status = intake_complete`
-- intake summary, goal, concerns, and submitted artifact links are present
+- intake summary, goal, and concerns are present
+- submitted artifact links, when provided by the customer, are recorded
 - submitted scope fits Osiris Audit v1
 - no secrets, private keys, passwords, or production credentials are required
 
@@ -71,11 +72,11 @@ Procedure:
 
 1. Verify the purchase and refund eligibility against the record.
 2. Initiate the refund in Stripe against the matching payment.
-3. Confirm Stripe reports the refund successfully created or completed.
-4. Only then set `fulfillment_status = refunded`.
-5. Do not mark a case refunded merely because a refund was requested.
+3. Wait until Stripe reports the refund in a terminal successful state. If Stripe reports the refund as pending, in progress, or otherwise non-terminal, leave `fulfillment_status` unchanged and retain the pending state in the case notes.
+4. Only after terminal success, set `fulfillment_status = refunded` and set `updated_at` to the current time in the same database update.
+5. Do not mark a case refunded merely because a refund was requested or created.
 
-`updated_at` records the database transition time. Stripe remains the source of truth for the monetary refund itself.
+Stripe remains the source of truth for the monetary refund itself.
 
 ## 5. Deliver
 
