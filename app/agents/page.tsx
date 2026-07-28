@@ -85,9 +85,18 @@ export default function AgentsPage() {
 
   // Initial fetch + 10s polling
   useEffect(() => {
-    fetchTelemetry();
-    const interval = setInterval(fetchTelemetry, 10_000);
-    return () => clearInterval(interval);
+    const initialFetch = window.setTimeout(() => {
+      void fetchTelemetry();
+    }, 0);
+
+    const interval = window.setInterval(() => {
+      void fetchTelemetry();
+    }, 10_000);
+
+    return () => {
+      window.clearTimeout(initialFetch);
+      window.clearInterval(interval);
+    };
   }, [fetchTelemetry]);
 
   // Merge manifest agent with live telemetry (manifest is source of truth for identity)

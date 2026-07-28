@@ -163,11 +163,14 @@ export default function MirrorMirror() {
           </button>
           {isListening && (
             <div className="flex gap-1">
-              {[...Array(5)].map((_, i) => (
+              {[18, 30, 23, 32, 16].map((height, i) => (
                 <div
                   key={i}
                   className="w-1 bg-red-400 rounded-full animate-pulse"
-                  style={{ height: `${12 + Math.random() * 20}px`, animationDelay: `${i * 0.1}s` }}
+                  style={{
+                    height: `${height}px`,
+                    animationDelay: `${i * 0.1}s`,
+                  }}
                 />
               ))}
             </div>
