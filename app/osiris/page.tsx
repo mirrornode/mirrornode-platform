@@ -9,31 +9,39 @@
  * This page IS the visible proof that the MIRRORNODE ↔ OSIRIS link is real.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type OsirisState = Record<string, unknown> | null;
+
+function timestamp() {
+  return new Date().toLocaleTimeString('en-US', { hour12: false });
+}
 
 export default function OsirisPage() {
   const [state, setState]       = useState<OsirisState>(null);
   const [eventLog, setEventLog] = useState<string[]>([]);
   const [loading, setLoading]   = useState(false);
   const [syncing, setSyncing]   = useState(false);
-  const pollRef                 = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollRef                 = useRef<number | null>(null);
+
+  const log = useCallback((msg: string) => {
+    setEventLog((prev) => [msg, ...prev].slice(0, 50));
+  }, []);
 
   // ── Fetch state ────────────────────────────────────────────────────────────
-  async function fetchState() {
+  const fetchState = useCallback(async () => {
     setLoading(true);
     try {
-      const res  = await fetch('/api/state/osiris');
+      const res = await fetch('/api/state/osiris');
       const data = await res.json();
       setState(data);
-      log(`[${ts()}] STATE fetched — status: ${data.status ?? '?'}`);
+      log(`[${timestamp()}] STATE fetched — status: ${data.status ?? '?'}`);
     } catch (err) {
-      log(`[${ts()}] ERROR fetching state: ${String(err)}`);
+      log(`[${timestamp()}] ERROR fetching state: ${String(err)}`);
     } finally {
       setLoading(false);
     }
-  }
+  }, [log]);
 
   // ── Send SYNC event ────────────────────────────────────────────────────────
   async function sendSync() {
@@ -49,33 +57,31 @@ export default function OsirisPage() {
         }),
       });
       const data = await res.json();
-      log(`[${ts()}] SYNC sent → result: ${data.result ?? 'ack'}`);
+      log(`[${timestamp()}] SYNC sent → result: ${data.result ?? 'ack'}`);
       // Immediately refresh state after sync
       await fetchState();
     } catch (err) {
-      log(`[${ts()}] ERROR on sync: ${String(err)}`);
+      log(`[${timestamp()}] ERROR on sync: ${String(err)}`);
     } finally {
       setSyncing(false);
     }
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  function ts() {
-    return new Date().toLocaleTimeString('en-US', { hour12: false });
-  }
-
-  function log(msg: string) {
-    setEventLog((prev) => [msg, ...prev].slice(0, 50));
-  }
-
   // ── Mount: initial fetch + 10s poll ───────────────────────────────────────
   useEffect(() => {
-    fetchState();
-    pollRef.current = setInterval(fetchState, 10_000);
+    const initialFetch = window.setTimeout(() => {
+      void fetchState();
+    }, 0);
+
+    pollRef.current = window.setInterval(() => {
+      void fetchState();
+    }, 10_000);
+
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
+      window.clearTimeout(initialFetch);
+      if (pollRef.current) window.clearInterval(pollRef.current);
     };
-  }, []);
+  }, [fetchState]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
