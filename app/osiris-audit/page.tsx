@@ -42,8 +42,8 @@ export default function OsirisAuditPage() {
           <li>- One structured audit document</li>
           <li>- Review of up to 5 primary artifacts or links</li>
           <li>- A summary of your current system shape</li>
-          <li>- Strengths, risks, and likely failure modes</li>
-          <li>- Quick wins and recommended next actions</li>
+          <li>- Evidence-linked observations, risks, and likely failure modes</li>
+          <li>- Prioritized next actions, normally no more than 7</li>
           <li>- One clarification pass for original intake context</li>
         </ul>
       </section>
@@ -59,19 +59,33 @@ export default function OsirisAuditPage() {
       </section>
 
       <section className="mb-12">
-        <h2 className="text-xl font-semibold">Not included</h2>
+        <h2 className="text-xl font-semibold">Professional boundary</h2>
+        <p className="mt-4 text-zinc-300">
+          This is a bounded structural review: one pass, performed by hand with
+          AI-assisted analysis, at the scope declared in your intake. It is not
+          penetration testing, legal or regulatory advice, compliance certification,
+          exhaustive line-by-line code review, performance benchmarking, remediation,
+          or a guarantee of vulnerability discovery, safety, or production readiness.
+        </p>
+      </section>
+
+      <section className="mb-12">
+        <h2 className="text-xl font-semibold">Access and data handling</h2>
         <ul className="mt-4 space-y-2 text-zinc-300">
-          <li>- Implementation, code changes, or deployment</li>
-          <li>- Live debugging or ongoing consulting</li>
-          <li>- Security certification, legal advice, tax advice, or medical advice</li>
-          <li>- Guaranteed outcomes</li>
+          <li>- Provide only material you are authorized to share.</li>
+          <li>- Review access must be read-only, time-limited, and scope-limited.</li>
+          <li>- The reviewed repository state is pinned to a specific commit.</li>
+          <li>- Do not submit production credentials, customer databases, or end-user data.</li>
+          <li>- Private source is not sent to a third-party AI service without explicit authorization.</li>
+          <li>- Active source materials and working copies are removed no later than 30 days after delivery, subject to documented backup and provider-log retention cycles.</li>
         </ul>
       </section>
 
       <section className="mb-12">
         <OsirisAuditCheckoutButton />
         <p className="mt-3 text-sm text-zinc-500">
-          $149 USD. Secure checkout via Stripe. One-time payment.
+          $149 USD. Secure checkout via Stripe. One-time payment. This is intentionally
+          underpriced pilot pricing while fulfillment time and outcomes are measured.
         </p>
       </section>
 
@@ -79,7 +93,8 @@ export default function OsirisAuditPage() {
         <h2 className="text-xl font-semibold">What happens after payment</h2>
         <ol className="mt-4 list-decimal space-y-3 pl-6 text-zinc-300">
           <li>You receive a Stripe receipt at the email used for payment.</li>
-          <li>You receive a short intake request for your system summary, goals, concerns, and up to 5 artifacts or links.</li>
+          <li>You complete a short intake covering your system, goals, concerns, scope, and up to 5 authorized artifacts or links.</li>
+          <li>An accountable human Operator reviews and signs the delivered report.</li>
           <li>The audit is delivered as one structured document.</li>
           <li>One clarification pass is included for factual issues or missed context from the original intake.</li>
         </ol>
@@ -89,8 +104,10 @@ export default function OsirisAuditPage() {
         <h2 className="text-xl font-semibold">Turnaround and refund boundary</h2>
         <p className="mt-4 text-zinc-300">
           Target delivery is 3 business days after payment and complete intake.
-          Refunds are available before audit work begins. After work begins,
-          refunds are available only for non-delivery or clear fulfillment failure.
+          Before substantive review begins, cancellation or inability to establish
+          authorized access receives a full refund. After substantive review begins,
+          refunds are limited to non-delivery, clear fulfillment failure, or an
+          Operator-approved exception.
         </p>
       </section>
 
