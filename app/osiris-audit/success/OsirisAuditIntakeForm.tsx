@@ -90,7 +90,7 @@ export default function OsirisAuditIntakeForm({
         <p className="mt-2 text-sm leading-6 text-emerald-900">
           Your audit context is now recorded. Target delivery is 3 business
           days after complete intake. We will contact the email used at checkout
-          if a clarification is needed.
+          if scope, access, or AI-processing authorization needs clarification.
         </p>
       </section>
     );
@@ -98,6 +98,17 @@ export default function OsirisAuditIntakeForm({
 
   return (
     <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+      <section className="rounded-xl border border-neutral-200 bg-neutral-50 p-5 text-sm leading-6 text-neutral-700">
+        <h2 className="font-semibold text-neutral-950">Before you submit</h2>
+        <p className="mt-2">
+          Provide only material you are authorized to share. Do not include
+          production credentials, customer databases, end-user data, or secret values.
+          This intake accepts public or otherwise authorized references only. Private
+          source will not be sent to a third-party AI service without separate,
+          explicit authorization recorded for the engagement.
+        </p>
+      </section>
+
       <div>
         <label
           htmlFor="system-summary"
@@ -175,8 +186,9 @@ export default function OsirisAuditIntakeForm({
           Artifact or repository links
         </label>
         <p className="mt-1 text-xs text-neutral-500">
-          Optional. Add one complete URL per line, up to 5. Only provide
-          material you are authorized to share.
+          Optional. Add one complete URL per line, up to 5. Identify the exact
+          commit or reviewed ref where possible. Only provide material you are
+          authorized to share.
         </p>
         <textarea
           id="artifact-links"
@@ -202,11 +214,11 @@ export default function OsirisAuditIntakeForm({
           htmlFor="additional-context"
           className="block text-sm font-medium text-neutral-900"
         >
-          Additional context
+          Additional context and scope boundary
         </label>
         <p className="mt-1 text-xs text-neutral-500">
-          Optional constraints, history, deadlines, or terminology that will
-          help the review.
+          Optional constraints, deployment target, history, deadlines, terminology,
+          and which repositories, directories, or services are explicitly in or out.
         </p>
         <textarea
           id="additional-context"
