@@ -2,7 +2,9 @@
 
 **Status:** Release candidate for Operator redline and Customer Zero execution. Revise to v0.2 only after one Customer Zero report and one adversarial review.
 
-**Governing rule:** This document, not intuition, governs what a paying customer receives. Where this standard conflicts with the published offer or signed engagement terms, delivery stops until the conflict is resolved. The reviewer may not silently choose the more convenient interpretation.
+**Authority scope:** This is a platform-local delivery standard for Osiris Audit v1. It does not create or amend MIRRORNODE canonical authority, agent authority, or cross-repository capability boundaries. Where this document conflicts with CORE-HUB canon, a signed engagement, or the published offer, delivery stops until the conflict is resolved. The reviewer may not silently choose the more convenient interpretation. Any rule here that would require a new canonical capability or authority boundary remains non-governing until separately accepted and referenced in MIRRORNODE-CORE-HUB.
+
+**Delivery rule:** Within the authority already granted by applicable canon and engagement terms, this document governs the contents and method of a paying-customer Osiris review.
 
 **Inherited practice statement:** This standard adapts established lightweight architecture-review methods, code-audit reporting practice, and evidence disciplines used in assurance work. Osiris claims novelty only in its specific combination: fixed-scope single-pass review, mandatory epistemic labeling of material statements, commit-pinned evidence citations, and a published exclusion and refusal list.
 
@@ -92,7 +94,7 @@ Internal MIRRORNODE vocabulary, node names, engine names, and numeric mnemonics 
 
 An accountable human reviewer approves every delivered report and signs it using their professional name and role. The reviewer may reject, downgrade, relabel, or remove any proposed finding.
 
-AI systems may assist with evidence organization, analysis, and drafting but may not independently authorize findings, severity, publication, refusal, refund, or delivery. The method section must disclose whether AI tools were used, what role they played, and whether customer source material was transmitted to a third-party model service.
+Within the capability and authority boundaries already established by applicable canon and engagement terms, AI systems may assist with evidence organization, analysis, and drafting but may not independently authorize findings, severity, publication, refusal, refund, or delivery. This sentence is an implementation constraint for this service, not an amendment to CORE-HUB authority. The method section must disclose whether AI tools were used, what role they played, and whether customer source material was transmitted to a third-party model service.
 
 ## 8. Data handling, retention, revocation, and destruction
 
@@ -125,7 +127,7 @@ Before substantive review begins, cancellation or inability to establish authori
 
 Once substantive review begins, refunds are limited to non-delivery, clear fulfillment failure, or an Operator-approved exception. Customer revocation stops further review immediately; the Operator determines whether to deliver completed work or issue a proportional or full refund consistently with the published terms.
 
-The public offer, checkout language, and engagement terms must use a compatible refund boundary before paid delivery begins.
+The public offer, checkout language, engagement terms, and fulfillment runbook must use a compatible refund boundary before paid delivery begins.
 
 ## 11. Pilot economics disclosure
 
