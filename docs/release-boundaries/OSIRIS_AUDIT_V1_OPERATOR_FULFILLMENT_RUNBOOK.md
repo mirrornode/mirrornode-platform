@@ -65,16 +65,19 @@ The Operator should retain the reason for the pause with the case working notes 
 
 Customer-facing refund boundary:
 
-- before audit work begins, a refund may be issued
-- after work begins, refund is limited to non-delivery or clear fulfillment failure
+- before substantive audit work begins, cancellation or inability to establish authorized access receives a full refund
+- a declined engagement receives a full refund
+- after substantive work begins, refunds are limited to non-delivery, clear fulfillment failure, or an Operator-approved exception consistent with the published terms and engagement record
+- if customer access is revoked after work begins, further review stops immediately and the Operator decides whether completed work should be delivered or whether a proportional or full refund is appropriate under the published terms
 
 Procedure:
 
-1. Verify the purchase and refund eligibility against the record.
-2. Initiate the refund in Stripe against the matching payment.
-3. Wait until Stripe reports the refund in a terminal successful state. If Stripe reports the refund as pending, in progress, or otherwise non-terminal, leave `fulfillment_status` unchanged and retain the pending state in the case notes.
-4. Only after terminal success, set `fulfillment_status = refunded` and set `updated_at` to the current time in the same database update.
-5. Do not mark a case refunded merely because a refund was requested or created.
+1. Verify the purchase, current fulfillment state, and refund basis against the case record and applicable published/engagement terms.
+2. If the request occurs before substantive work begins or because authorized access cannot be established, treat the refund as required rather than discretionary.
+3. Initiate the refund in Stripe against the matching payment.
+4. Wait until Stripe reports the refund in a terminal successful state. If Stripe reports the refund as pending, in progress, or otherwise non-terminal, leave `fulfillment_status` unchanged and retain the pending state in the case notes.
+5. Only after terminal success, set `fulfillment_status = refunded` and set `updated_at` to the current time in the same database update.
+6. Do not mark a case refunded merely because a refund was requested or created.
 
 Stripe remains the source of truth for the monetary refund itself.
 
