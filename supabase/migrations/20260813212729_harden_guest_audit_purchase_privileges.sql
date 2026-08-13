@@ -4,6 +4,11 @@
 
 alter table public.guest_audit_purchases enable row level security;
 
+-- Pin the trigger function to trusted built-ins and clear the database advisor's
+-- mutable search-path warning.
+alter function public.set_guest_audit_purchases_updated_at()
+  set search_path = pg_catalog;
+
 revoke all privileges on table public.guest_audit_purchases
   from public, anon, authenticated;
 
