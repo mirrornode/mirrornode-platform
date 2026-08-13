@@ -1,0 +1,14 @@
+-- Keep the Osiris purchase and intake ledger server-owned.
+-- RLS blocks row access, while explicit table grants remove unused capabilities
+-- inherited from legacy public-schema defaults.
+
+alter table public.guest_audit_purchases enable row level security;
+
+revoke all privileges on table public.guest_audit_purchases
+  from public, anon, authenticated;
+
+-- The Stripe webhook and verified intake route use the service-role client for
+-- reconciliation. They require reads, inserts, and updates, but not deletes or
+-- table-administration privileges.
+grant select, insert, update on table public.guest_audit_purchases
+  to service_role;
