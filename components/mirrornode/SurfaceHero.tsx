@@ -26,10 +26,10 @@ export function SurfaceHero() {
           <div className="max-w-3xl">
             <p className="mb-4 font-mono text-xs uppercase tracking-[0.24em] text-cyan-200">Governed public surface</p>
             <h1 className="max-w-4xl text-5xl font-semibold leading-[0.92] tracking-tight text-white md:text-7xl">
-              Enter lanes. Inspect nodes. Understand the system.
+              Bring me what has become difficult to understand.
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-white/65">
-              MIRRORNODE presents lanes, relationships, and reviewed public representations of the Agent Stack without flattening governance, execution, or human authority boundaries.
+              I’ll help you establish what is known, what remains uncertain, and what deserves your decision.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <a href="#surface" className="rounded-lg bg-cyan-200 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-100">
