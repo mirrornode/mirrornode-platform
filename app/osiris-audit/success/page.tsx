@@ -1,4 +1,20 @@
+import type { Metadata } from 'next';
 import OsirisAuditIntakeForm from './OsirisAuditIntakeForm';
+
+export const metadata: Metadata = {
+  title: 'Complete your Osiris Audit intake | MIRRORNODE',
+  description:
+    'Secure post-payment intake for Osiris Audit v1. Complete the authorized scope and context needed to begin review.',
+  robots: {
+    index: false,
+    follow: false,
+  },
+  openGraph: {
+    title: 'Osiris Audit v1 | MIRRORNODE',
+    description: 'Secure post-payment intake for Osiris Audit v1.',
+    type: 'website',
+  },
+};
 
 type SuccessPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
