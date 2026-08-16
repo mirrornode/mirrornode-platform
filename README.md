@@ -78,7 +78,6 @@ Then open `http://localhost:3000`.
 ## Documentation
 
 - [`docs/operations/ACTIVE_PRODUCTION_SURFACES.md`](docs/operations/ACTIVE_PRODUCTION_SURFACES.md) — verified production and commercial surfaces
-- [`docs/PUBLIC_COPY_SOURCE_PRECEDENCE.md`](docs/PUBLIC_COPY_SOURCE_PRECEDENCE.md) — public-copy/source-precedence boundary, if present on the current branch
 
 ## Project
 
