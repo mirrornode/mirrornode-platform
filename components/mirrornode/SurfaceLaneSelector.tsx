@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useReducer } from "react";
 import {
   deriveLaneInteractionState,
@@ -37,6 +38,55 @@ export function SurfaceLaneSelector() {
 
   return (
     <section id="lanes" className="mx-auto max-w-7xl px-6 py-12 md:px-10">
+      <div className="mb-10 rounded-lg border border-cyan-300/25 bg-slate-950/70 p-6 shadow-[inset_0_0_0_1px_rgba(103,232,249,0.05)] md:p-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-2xl">
+            <p className="font-mono text-xs uppercase tracking-[0.24em] text-cyan-200">Available now</p>
+            <h2 className="mt-2 text-3xl font-semibold text-white md:text-4xl">Osiris Audit v1</h2>
+            <p className="mt-3 text-base leading-7 text-white/65">
+              Before you add another agent, automation, or layer of control, take one disciplined
+              outside look at the system you are already operating.
+            </p>
+          </div>
+          <div className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 font-mono text-xs uppercase tracking-[0.16em] text-cyan-100">
+            $149 · one-time
+          </div>
+        </div>
+
+        <dl className="mt-8 grid gap-6 md:grid-cols-3">
+          <div>
+            <dt className="font-mono text-[0.68rem] uppercase tracking-[0.16em] text-white/40">You bring</dt>
+            <dd className="mt-2 text-sm leading-6 text-white/70">
+              One defined system or workflow, its decision context, and up to five authorized artifacts or links.
+            </dd>
+          </div>
+          <div>
+            <dt className="font-mono text-[0.68rem] uppercase tracking-[0.16em] text-white/40">You receive</dt>
+            <dd className="mt-2 text-sm leading-6 text-white/70">
+              A structural map, evidence-linked risks, prioritized next actions, and a clear boundary summary.
+            </dd>
+          </div>
+          <div>
+            <dt className="font-mono text-[0.68rem] uppercase tracking-[0.16em] text-white/40">Delivery</dt>
+            <dd className="mt-2 text-sm leading-6 text-white/70">
+              One human-reviewed document. Target delivery: three business days after payment and complete intake.
+            </dd>
+          </div>
+        </dl>
+
+        <div className="mt-8 flex flex-wrap items-center gap-4">
+          <Link
+            href="/audit"
+            className="rounded-lg bg-cyan-200 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05070a]"
+          >
+            See what the audit covers
+          </Link>
+          <p className="text-sm text-white/45">
+            Not a demo. Not a subscription. Not penetration testing or certification.
+          </p>
+        </div>
+      </div>
+
       <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="font-mono text-xs uppercase tracking-[0.24em] text-cyan-200">Lanes</p>
