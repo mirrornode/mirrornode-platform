@@ -30,10 +30,7 @@ export function SurfaceBoundaryNotice({
   if (expandable) {
     return (
       <details className={classes}>
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-medium">
-          <span>Boundary detail</span>
-          <SurfaceStateBadge state={state} />
-        </summary>
+        <summary className="cursor-pointer list-none font-medium text-white/75">Public boundary</summary>
         <p className="mt-3 text-sm leading-6 opacity-90">{content}</p>
       </details>
     );
