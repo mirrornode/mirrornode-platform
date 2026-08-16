@@ -23,13 +23,13 @@ export const boundaryStates: Record<ExposureState, BoundaryCopyBlock> = {
     badge: "Reviewed",
     inline: "This section is reviewed for public interpretation.",
     detail:
-      "This view has been prepared for public use and reviewed for scope accuracy. It may describe governed system behavior without exposing internal operator controls.",
+      "This public copy has been checked against current source-backed records for scope accuracy. Reviewed presentation does not itself create authority, expose operator controls, or claim a live runtime instance.",
   },
   deferred: {
     badge: "Deferred",
-    inline: "This capability is not part of the current public release.",
+    inline: "This public classification remains intentionally limited pending reconciliation.",
     detail:
-      "This capability is intentionally out of scope for the present release. The public surface may reference it conceptually, but does not expose entry, control, or operational detail.",
+      "This item may be named for public orientation, but unresolved placement, authority, or release status is not inferred. It does not expose entry, control, or operational authority while reconciliation remains open.",
   },
   "internal-only": {
     badge: "Internal Only",
@@ -41,7 +41,7 @@ export const boundaryStates: Record<ExposureState, BoundaryCopyBlock> = {
 
 export const boundaryCopy = {
   heroStack:
-    "Agent Stack entries shown here are public representations. Role and authority wording remains subject to canonical manifest review.",
+    "Agent Stack entries shown here are public representations. Role, status, and authority wording follow current source-backed governance and reconciliation records; presentation does not create authority.",
   audit:
     "Osiris surfaces findings and recommendations. Remediation requires human decision. No autonomous changes are made.",
   technical:
