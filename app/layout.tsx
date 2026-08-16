@@ -14,12 +14,14 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "MIRRORNODE",
-  description: "Distributed AI orchestration lattice — coordinating Lucian, Osiris, Hermes, Thoth, Theia, and Ptah across quantum-cognitive bridges.",
-  keywords: ["MIRRORNODE", "AI orchestration", "distributed systems", "agents"],
+  description:
+    "Governed AI coordination for clearer context, review, authority boundaries, and accountable delivery.",
+  keywords: ["MIRRORNODE", "AI orchestration", "AI systems", "structural review"],
   authors: [{ name: "Sean Malm" }],
   openGraph: {
     title: "MIRRORNODE",
-    description: "Distributed AI orchestration lattice",
+    description:
+      "Governed AI coordination for clearer context, review, authority boundaries, and accountable delivery.",
     type: "website",
   },
 };
