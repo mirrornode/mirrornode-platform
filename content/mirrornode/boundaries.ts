@@ -41,7 +41,7 @@ export const boundaryStates: Record<ExposureState, BoundaryCopyBlock> = {
 
 export const boundaryCopy = {
   heroStack:
-    "Agent Stack entries shown here are public representations. Role, status, and authority wording follow current source-backed governance and reconciliation records; presentation does not create authority.",
+    "Node-map entries shown here are selected public representations, not a claim of the complete Agent Stack. Role, status, and authority wording follow current source-backed governance and reconciliation records; presentation does not create authority.",
   audit:
     "Osiris surfaces findings and recommendations. Remediation requires human decision. No autonomous changes are made.",
   technical:
