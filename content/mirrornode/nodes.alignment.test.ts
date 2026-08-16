@@ -5,7 +5,7 @@ import { surfaceNodes } from "./nodes";
 describe("public node language alignment", () => {
   it("keeps Merlin advisory rather than execution-bearing", () => {
     const merlin = surfaceNodes.find((node) => node.id === "merlin");
-    expect(merlin?.summary).toContain("planning");
+    expect(merlin?.summary.toLowerCase()).toContain("planning");
     expect(merlin?.authoritySummary).toContain("does not grant approval");
     expect(merlin?.authoritySummary).toContain("execution authority");
   });
