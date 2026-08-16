@@ -34,7 +34,7 @@ export const lanes: readonly PublicLane[] = [
     descriptor: "Osiris Audit pipeline",
     pipeline: ["Intake", "Structural Review", "Evidence Pass", "Findings", "Delivery"],
     body:
-      "Osiris Audit is one concrete lane: a bounded structural review with findings and recommendations, not autonomous remediation.",
+      "Osiris Audit is one concrete lane: a bounded structural review with findings and recommendations, not autonomous remediation. See the offer above.",
     status: "active",
     exposureState: "reviewed",
     requiresAcknowledgement: true,
