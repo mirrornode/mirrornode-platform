@@ -1,14 +1,15 @@
 # Public Surface Boundary Implementation
 
-This slice standardizes the MIRRORNODE public exposure vocabulary and applies it to the homepage hero, node map, and inspector.
+This slice standardizes the MIRRORNODE public exposure vocabulary and applies it to the homepage hero, selected public node map, lanes, and inspector.
 
 ## Included
 
 - Typed exposure states: Static, Live Preview, Reviewed, Deferred, Internal Only.
 - Shared badge, inline notice, and expandable detail treatment.
-- Public-safe inspector fields for function, authority, relations, public basis, and one focused action.
-- Agent Stack hero language governed by the same source-precedence and reconciliation rules as the inspector.
-- Boundary-state regression coverage.
+- Public-safe inspector fields for function, authority boundary, relations, public basis, and one focused action.
+- Selected node-map language governed by the same source-precedence and reconciliation rules as the inspector.
+- Lane copy aligned to the same process and authority model.
+- Boundary-state and semantic-alignment regression coverage.
 
 ## Public node copy source rule
 
@@ -24,6 +25,8 @@ When role or authority descriptions differ across records, public copy is reconc
 6. historical runtime snapshots.
 
 A repository manifest, runtime allowlist, UI placement, or technical capability does not by itself establish governance authority. Where current records explicitly leave identity, seat placement, or authority unresolved, the public surface must show that state as unresolved/deferred rather than infer a stronger classification.
+
+The homepage node map is intentionally a **selected public projection**, not a claim that the displayed entries constitute the complete MIRRORNODE Agent Stack or current registry. CORE-HUB is a governance surface, Librarian remains under seat-versus-capability reconciliation, and omitted identities must not be interpreted as absent, inactive, or unauthorized merely because they are not displayed in this visual.
 
 ### Current copy alignment
 
@@ -42,6 +45,7 @@ Primary reconciliation anchors are maintained in `mirrornode/MIRRORNODE-CORE-HUB
 - Deployment secret changes.
 - GitHub Actions or Vercel workflow refactors.
 - Claims that a static public representation is live execution.
+- Claims that the selected public node map is a complete current registry.
 - Silent promotion of unresolved node/seat placement through presentation copy.
 
 Production promotion remains gated on preview verification, copy review, and normal repository checks.
