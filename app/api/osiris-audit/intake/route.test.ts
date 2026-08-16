@@ -28,6 +28,7 @@ vi.mock('@supabase/supabase-js', () => ({
 vi.mock('@/lib/env/stripe', () => ({
   stripeEnv: {
     STRIPE_SECRET_KEY: 'sk_test',
+    STRIPE_AUDIT_PRICE_ID: 'price_osiris_149',
     SUPABASE_URL: 'https://example.supabase.co',
     SUPABASE_SERVICE_ROLE_KEY: 'service-role-test',
   },
@@ -52,16 +53,39 @@ function request(body: unknown) {
   });
 }
 
+function paidAuditSession(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'cs_test_paid',
+    mode: 'payment',
+    customer: 'cus_test',
+    customer_details: { email: 'customer@example.com' },
+    metadata: { flow: 'osiris-audit-v1' },
+    payment_status: 'paid',
+    status: 'complete',
+    line_items: {
+      data: [
+        {
+          quantity: 1,
+          price: { id: 'price_osiris_149' },
+        },
+      ],
+    },
+    ...overrides,
+  };
+}
+
 describe('POST /api/osiris-audit/intake', () => {
   beforeEach(() => {
-    mocks.retrieveSession.mockResolvedValue({
-      id: 'cs_test_paid',
-      customer: 'cus_test',
-      customer_details: { email: 'customer@example.com' },
-      metadata: { flow: 'osiris-audit-v1' },
-      payment_status: 'paid',
-      status: 'complete',
-    });
+    mocks.retrieveSession.mockReset();
+    mocks.createClient.mockReset();
+    mocks.upsert.mockReset();
+    mocks.update.mockReset();
+    mocks.eqSession.mockReset();
+    mocks.eqFulfillment.mockReset();
+    mocks.isIntakeNull.mockReset();
+    mocks.selectUpdated.mockReset();
+
+    mocks.retrieveSession.mockResolvedValue(paidAuditSession());
 
     mocks.upsert.mockResolvedValue({ error: null });
     mocks.update.mockReturnValue({ eq: mocks.eqSession });
@@ -105,12 +129,49 @@ describe('POST /api/osiris-audit/intake', () => {
     expect(mocks.createClient).not.toHaveBeenCalled();
   });
 
-  it('returns 403 for an unpaid or wrong-flow session', async () => {
-    mocks.retrieveSession.mockResolvedValueOnce({
-      id: 'cs_test_unpaid',
-      metadata: { flow: 'another-flow' },
-      payment_status: 'unpaid',
+  it('retrieves the session with line-item price expansion', async () => {
+    const res = await POST(request(validBody) as never);
+
+    expect(res.status).toBe(200);
+    expect(mocks.retrieveSession).toHaveBeenCalledWith('cs_test_paid', {
+      expand: ['line_items.data.price'],
     });
+  });
+
+  it('returns 403 for an unpaid or wrong-flow session', async () => {
+    mocks.retrieveSession.mockResolvedValueOnce(
+      paidAuditSession({
+        id: 'cs_test_unpaid',
+        metadata: { flow: 'another-flow' },
+        payment_status: 'unpaid',
+      })
+    );
+
+    const res = await POST(request(validBody) as never);
+
+    expect(res.status).toBe(403);
+    expect(mocks.createClient).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 for a paid session containing the wrong price', async () => {
+    mocks.retrieveSession.mockResolvedValueOnce(
+      paidAuditSession({
+        line_items: {
+          data: [{ quantity: 1, price: { id: 'price_other' } }],
+        },
+      })
+    );
+
+    const res = await POST(request(validBody) as never);
+
+    expect(res.status).toBe(403);
+    expect(mocks.createClient).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 for a subscription-mode session even with matching metadata', async () => {
+    mocks.retrieveSession.mockResolvedValueOnce(
+      paidAuditSession({ mode: 'subscription' })
+    );
 
     const res = await POST(request(validBody) as never);
 
@@ -126,7 +187,7 @@ describe('POST /api/osiris-audit/intake', () => {
     expect(res.status).toBe(409);
   });
 
-  it('reconciles payment evidence and accepts a valid intake', async () => {
+  it('reconciles payment evidence and accepts a valid canonical intake', async () => {
     const res = await POST(request(validBody) as never);
     const body = await res.json();
 
