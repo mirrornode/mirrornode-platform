@@ -12,6 +12,12 @@ export const metadata = {
       "A one-pass structural audit of your AI system, workflow, or automation stack.",
     type: "website",
   },
+  twitter: {
+    card: "summary",
+    title: "Osiris Audit v1 | MIRRORNODE",
+    description:
+      "A one-pass structural audit of your AI system, workflow, or automation stack.",
+  },
 };
 
 export default function OsirisAuditPage() {
