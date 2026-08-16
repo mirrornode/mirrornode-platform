@@ -28,4 +28,10 @@ describe("public node language alignment", () => {
     expect(librarian?.exposureState).toBe("deferred");
     expect(librarian?.authoritySummary).toContain("placement remains unresolved");
   });
+
+  it("does not encode displayed-map membership as a complete registry claim", () => {
+    expect(surfaceNodes.some((node) => node.id === "core-hub")).toBe(true);
+    expect(surfaceNodes.some((node) => node.id === "librarian")).toBe(true);
+    expect(surfaceNodes.every((node) => node.nodeType === "agent")).toBe(false);
+  });
 });
