@@ -42,7 +42,9 @@ export async function POST(req: NextRequest) {
   let session: Stripe.Checkout.Session;
 
   try {
-    session = await stripe.checkout.sessions.retrieve(sessionId);
+    session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ['line_items.data.price'],
+    });
   } catch {
     return NextResponse.json(
       { error: 'Unable to verify this checkout session' },
@@ -50,9 +52,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const hasCanonicalAuditPrice =
+    session.line_items?.data.some(
+      (lineItem) =>
+        lineItem.price?.id === stripeEnv.STRIPE_AUDIT_PRICE_ID &&
+        lineItem.quantity === 1
+    ) ?? false;
+
   if (
+    session.mode !== 'payment' ||
     session.metadata?.flow !== AUDIT_FLOW ||
-    session.payment_status !== 'paid'
+    session.payment_status !== 'paid' ||
+    !hasCanonicalAuditPrice
   ) {
     return NextResponse.json(
       { error: 'This session is not a paid Osiris Audit v1 purchase' },
