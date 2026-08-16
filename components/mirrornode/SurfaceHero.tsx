@@ -17,27 +17,35 @@ export function SurfaceHero() {
               <p className="text-sm text-white/55">Adaptive path. Governed authority.</p>
             </div>
           </div>
-          <div className="rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1.5 font-mono text-xs uppercase tracking-[0.16em] text-amber-100">
-            Static public surface
-          </div>
         </nav>
 
         <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)] lg:items-end">
           <div className="max-w-3xl">
-            <p className="mb-4 font-mono text-xs uppercase tracking-[0.24em] text-cyan-200">Governed public surface</p>
+            <p className="mb-4 font-mono text-xs uppercase tracking-[0.24em] text-cyan-200">Structural review for AI systems</p>
             <h1 className="max-w-4xl text-5xl font-semibold leading-[0.92] tracking-tight text-white md:text-7xl">
               Bring me what has become difficult to understand.
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-white/65">
               I’ll help you establish what is known, what remains uncertain, and what deserves your decision.
             </p>
+            <p className="mt-5 max-w-2xl text-base leading-7 text-white/50">
+              Osiris Audit v1 is one pass over the AI stack you are already running — agents, automations,
+              prompts, handoffs. Human-reviewed and Operator-signed. $149. Target delivery: three business
+              days after payment and complete intake.
+            </p>
             <div className="mt-7 flex flex-wrap gap-3">
-              <a href="#surface" className="rounded-lg bg-cyan-200 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-100">
+              <Link
+                href="/audit"
+                className="rounded-lg bg-cyan-200 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05070a]"
+              >
+                Osiris Audit — $149
+              </Link>
+              <a
+                href="#surface"
+                className="rounded-lg border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white/85 transition hover:border-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05070a]"
+              >
                 Explore the system
               </a>
-              <Link href="/audit" className="rounded-lg border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white/85 transition hover:border-white/30">
-                Review Osiris Audit
-              </Link>
             </div>
           </div>
           <SurfaceBoundaryNotice state="static">{boundaryCopy.heroStack}</SurfaceBoundaryNotice>
