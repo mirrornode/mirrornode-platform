@@ -43,14 +43,14 @@ export const lanes: readonly PublicLane[] = [
   },
   {
     slug: "agent-stack",
-    title: "Agent Stack",
-    descriptor: "Identity, function, authority",
+    title: "Public Node Map",
+    descriptor: "Selected identities and governance surfaces",
     pipeline: ["Identity", "Function", "Authority", "Public Basis", "Boundary"],
     body:
-      "Public Agent Stack entries are source-backed representations of current MIRRORNODE records. They separate identity, function, authority, evidence basis, and unresolved placement without inferring live runtime or stronger governance status from presentation alone.",
+      "The public node map shows selected source-backed representations, not a claim of the complete Agent Stack. It separates identity, function, authority, evidence basis, and unresolved placement without inferring live runtime or stronger governance status from presentation alone.",
     status: "active",
     exposureState: "reviewed",
-    ctaLabel: "Inspect Agent Stack",
+    ctaLabel: "Inspect node map",
     ctaHref: "#surface",
   },
   {
