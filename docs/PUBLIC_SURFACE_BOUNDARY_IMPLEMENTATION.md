@@ -6,8 +6,8 @@ This slice standardizes the MIRRORNODE public exposure vocabulary and applies it
 
 - Typed exposure states: Static, Live Preview, Reviewed, Deferred, Internal Only.
 - Shared badge, inline notice, and expandable detail treatment.
-- Public-safe inspector fields for function, authority, relations, evidence, and one focused action.
-- Agent Stack hero language held behind canonical manifest review.
+- Public-safe inspector fields for function, authority, relations, public basis, and one focused action.
+- Agent Stack hero language governed by the same source-precedence and reconciliation rules as the inspector.
 - Boundary-state regression coverage.
 
 ## Public node copy source rule
