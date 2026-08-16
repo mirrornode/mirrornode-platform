@@ -4,11 +4,18 @@ import { SurfaceBoundaryNotice } from "./SurfaceBoundaryNotice";
 import { SurfaceStateBadge } from "./SurfaceStateBadge";
 
 const authorityLabels = {
-  "public-surface": "Public",
-  "human-review": "Human-gated",
-  "governance-plane": "Governance",
-  "execution-plane": "Internal",
-  "canonical-reference": "Reviewed reference",
+  "public-surface": "Public surface",
+  "human-review": "Human-governed",
+  "governance-plane": "Governance record",
+  "execution-plane": "Internal execution",
+  "canonical-reference": "Reference only",
+} as const;
+
+const evidenceLabels = {
+  manifest: "Manifest-backed",
+  snapshot: "Reconciliation snapshot",
+  conceptual: "Conceptual representation",
+  "reviewed-copy": "Reviewed source copy",
 } as const;
 
 export function SurfaceNodeInspector({ node }: { node: PublicInspectorRecord }) {
@@ -22,22 +29,22 @@ export function SurfaceNodeInspector({ node }: { node: PublicInspectorRecord }) 
         <SurfaceStateBadge state={node.exposureState} />
       </div>
 
-      <p className="mt-3 text-sm leading-6 text-white/65">{node.summary}</p>
+      <p className="mt-3 text-base leading-7 text-white/70">{node.summary}</p>
 
       <dl className="mt-5 grid gap-4 text-sm">
         <div>
           <dt className="font-mono text-[0.68rem] uppercase tracking-[0.16em] text-white/40">Function</dt>
-          <dd className="mt-1 text-white/75">{node.functionSummary}</dd>
+          <dd className="mt-1 leading-6 text-white/75">{node.functionSummary}</dd>
         </div>
         <div>
-          <dt className="font-mono text-[0.68rem] uppercase tracking-[0.16em] text-white/40">Authority</dt>
-          <dd className="mt-1 text-amber-100/90">
+          <dt className="font-mono text-[0.68rem] uppercase tracking-[0.16em] text-white/40">Authority boundary</dt>
+          <dd className="mt-1 leading-6 text-amber-100/90">
             {authorityLabels[node.authorityLayer]} — {node.authoritySummary}
           </dd>
         </div>
         <div>
-          <dt className="font-mono text-[0.68rem] uppercase tracking-[0.16em] text-white/40">Evidence</dt>
-          <dd className="mt-1 capitalize text-white/75">{node.evidenceKind.replace("-", " ")}</dd>
+          <dt className="font-mono text-[0.68rem] uppercase tracking-[0.16em] text-white/40">Public basis</dt>
+          <dd className="mt-1 text-white/75">{evidenceLabels[node.evidenceKind]}</dd>
         </div>
         {node.relations.length > 0 ? (
           <div>
