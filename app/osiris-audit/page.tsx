@@ -3,11 +3,11 @@ import OsirisAuditCheckoutButton from "./OsirisAuditCheckoutButton";
 import OsirisAuditSequence from "../../components/osiris/OsirisAuditSequence";
 
 export const metadata = {
-  title: "Osiris Audit v1 | Seraphyth Dynamics",
+  title: "Osiris Audit v1 | MIRRORNODE",
   description:
     "A one-pass structural audit of your AI system, workflow, or automation stack.",
   openGraph: {
-    title: "Osiris Audit v1 | Seraphyth Dynamics",
+    title: "Osiris Audit v1 | MIRRORNODE",
     description:
       "A one-pass structural audit of your AI system, workflow, or automation stack.",
     type: "website",
@@ -19,7 +19,7 @@ export default function OsirisAuditPage() {
     <main className="mx-auto max-w-5xl px-6 py-16 text-zinc-100">
       <header className="mb-12">
         <p className="text-sm uppercase tracking-widest text-zinc-500">
-          Seraphyth Dynamics
+          MIRRORNODE
         </p>
         <h1 className="mt-3 text-4xl font-semibold leading-tight">
           Osiris Audit v1
