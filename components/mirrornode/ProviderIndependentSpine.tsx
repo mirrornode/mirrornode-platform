@@ -1,33 +1,44 @@
 const principles = [
   {
     title: "Control",
-    body: "Keep consequential authority explicit. Models can inspect, propose, challenge, and assist without silently enlarging their own permissions.",
+    body: "Keep consequential authority outside the model layer. Models can inspect, propose, challenge, and assist without silently enlarging their own permissions.",
   },
   {
     title: "Continuity",
-    body: "Design critical AI functions so a provider, API token, model session, or compute host can change without erasing the required capability or the operating record.",
+    body: "Define critical functions independently of one provider, then qualify replacement substrates against the acceptance contract instead of assuming model equivalence.",
   },
   {
     title: "Evidence",
-    body: "Preserve what was observed, reviewed, authorized, delivered, and still unknown so decisions can be reconstructed instead of remembered from a model conversation.",
+    body: "Preserve observations, reviews, authorizations, handoffs, and outcomes outside model memory so a substrate change does not erase the operating record.",
   },
+];
+
+const mechanism = [
+  "Define the required function independently of a model.",
+  "Benchmark which substrates are actually eligible to perform it.",
+  "Keep authority and side-effect gates outside the cognition layer.",
+  "Keep evidence durable enough to reconstruct what happened after the model is gone.",
 ];
 
 export function ProviderIndependentSpine() {
   return (
     <section className="border-b border-cyan-300/10 bg-[#070a0f] px-6 py-12 text-white md:px-10">
       <div className="mx-auto max-w-7xl">
-        <div className="max-w-3xl">
+        <div className="max-w-4xl">
           <p className="font-mono text-xs uppercase tracking-[0.24em] text-cyan-200">
-            Provider-independent control infrastructure
+            Capability continuity
           </p>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">
-            Change the model. Keep the capability, authority boundary, and record.
+            Models are replaceable. Your capability, authority, and evidence should not be.
           </h2>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-white/60">
-            MIRRORNODE is building toward portable cognition: preferred hosted models where they add value,
-            MIRRORNODE-controlled inference where continuity matters, and deterministic verification beneath both.
-            Provider independence is an architecture target, not a claim that every substrate is equivalent today.
+          <p className="mt-4 max-w-3xl text-base leading-7 text-white/60">
+            MIRRORNODE separates the intelligence substrate from the control system around it. Models supply cognition;
+            they do not own the authority boundary, the durable operating record, or the definition of the business function
+            they are asked to perform.
+          </p>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/45">
+            Provider independence is an architecture target, not a claim that every model is equivalent today. A replacement
+            substrate earns a role by meeting its governed acceptance criteria.
           </p>
         </div>
 
@@ -40,6 +51,18 @@ export function ProviderIndependentSpine() {
               <p className="mt-3 text-sm leading-6 text-white/60">{principle.body}</p>
             </article>
           ))}
+        </div>
+
+        <div className="mt-6 rounded-xl border border-white/10 bg-black/20 p-5">
+          <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/45">How the architecture works</p>
+          <ol className="mt-4 grid gap-3 md:grid-cols-2">
+            {mechanism.map((item, index) => (
+              <li key={item} className="flex gap-3 text-sm leading-6 text-white/60">
+                <span className="font-mono text-cyan-200">0{index + 1}</span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ol>
         </div>
       </div>
     </section>
