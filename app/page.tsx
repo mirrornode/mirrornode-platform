@@ -1,24 +1,25 @@
 import type { Metadata } from "next";
 import { MirrornodeVisualSurface } from "@/components/mirrornode/MirrornodeVisualSurface";
+import { ProviderIndependentSpine } from "@/components/mirrornode/ProviderIndependentSpine";
 import { PublicLaneOverview } from "@/components/mirrornode/PublicLaneOverview";
 import { SurfaceHero } from "@/components/mirrornode/SurfaceHero";
 import { SurfaceLaneSelector } from "@/components/mirrornode/SurfaceLaneSelector";
 
 export const metadata: Metadata = {
-  title: "Mirrornode | Governed AI Coordination",
+  title: "MIRRORNODE | Controlled AI Infrastructure",
   description:
-    "A static public orientation surface for Mirrornode: context, routing, review, authority boundaries, and delivery without unsupported live-state claims.",
+    "MIRRORNODE is building provider-independent AI control infrastructure for capability continuity, bounded authority, and verifiable evidence across changing models and compute.",
   openGraph: {
-    title: "Mirrornode | Governed AI Coordination",
+    title: "MIRRORNODE | Controlled AI Infrastructure",
     description:
-      "Explore Mirrornode as a static public visual surface for governed AI coordination, lane routing, review boundaries, and delivery.",
+      "Provider-independent AI control infrastructure for capability continuity, bounded authority, and verifiable evidence.",
     type: "website",
   },
   twitter: {
     card: "summary",
-    title: "Mirrornode | Governed AI Coordination",
+    title: "MIRRORNODE | Controlled AI Infrastructure",
     description:
-      "A static public visual surface for governed AI coordination and review-aware delivery.",
+      "Provider-independent AI control infrastructure for capability continuity, bounded authority, and verifiable evidence.",
   },
 };
 
@@ -26,6 +27,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#05070a] text-white">
       <SurfaceHero />
+      <ProviderIndependentSpine />
       <MirrornodeVisualSurface />
       <SurfaceLaneSelector />
       <PublicLaneOverview />
