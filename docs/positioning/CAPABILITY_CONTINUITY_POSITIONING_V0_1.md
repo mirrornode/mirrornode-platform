@@ -8,9 +8,22 @@
 
 MIRRORNODE should not lead with generic claims such as “AI governance platform,” “model-agnostic control plane,” or “multi-model gateway.” Those are already occupied categories with strong incumbent language around observability, policy, routing, runtime enforcement, and model/cloud agnosticism.
 
-The sharper MIRRORNODE wedge is **Capability Continuity**:
+The sharper MIRRORNODE problem is:
 
 > Critical AI capability, explicit authority boundaries, and verifiable evidence should survive a change in model substrate.
+
+Internally, the architectural rule is the **Capability Continuity Invariant**.
+
+### Naming restraint
+
+“Capability continuity” is descriptive language, not a uniqueness claim. Current market research found at least one small AI-inference company using the same phrase in a closely related context, and other vendors already market AI continuity, model-change management, portable governance, and control planes that survive provider/model changes.
+
+Therefore:
+
+- do **not** claim MIRRORNODE coined the phrase;
+- do **not** claim “Capability Continuity” is an uncontested market category;
+- do **not** use `first`, `only`, or `category-defining` without stronger evidence;
+- differentiate through the mechanism and proof standard, not terminology ownership.
 
 The architectural mechanism is not “support lots of models.” It is:
 
@@ -18,7 +31,8 @@ The architectural mechanism is not “support lots of models.” It is:
 2. qualify replacement substrates against a governed acceptance contract;
 3. keep consequential authority and side-effect gates outside the cognition layer;
 4. keep the operating evidence durable outside model memory;
-5. fail closed rather than silently lowering the acceptance contract when no eligible substrate remains.
+5. retain escaped failure modes as future review memory;
+6. fail closed rather than silently lowering the acceptance contract when no eligible substrate remains.
 
 ## Core language
 
@@ -26,9 +40,11 @@ The architectural mechanism is not “support lots of models.” It is:
 
 > **AI systems that stay under your control when the model changes.**
 
-### Category line
+### Descriptive category line
 
 > **Capability continuity for AI systems.**
+
+Use this as descriptive language, not a proprietary category claim.
 
 ### Company line
 
@@ -104,25 +120,70 @@ Preferred framing:
 
 ## Competitive boundary
 
-The market already contains strong offerings in adjacent categories:
+The market already contains strong offerings in adjacent or overlapping categories.
 
-- AI gateways and dynamic model routing;
-- model-/cloud-agnostic governance platforms;
-- agent discovery and runtime policy enforcement;
-- observability, evaluations, and guardrails;
-- policy/GRC mapping and AI inventory;
-- sovereign cloud and sovereign AI infrastructure.
+### Gateways / routing
 
-MIRRORNODE should not claim uniqueness for those capabilities as categories.
+Examples include Cloudflare AI Gateway and hyperscaler/model-routing products.
 
-The distinction to test and defend is the combination of:
+They are strong at:
 
-- **capability continuity as an explicit invariant**;
-- **substrate eligibility by acceptance contract rather than provider declaration**;
-- **authority that cannot self-expand with model capability**;
+- model/provider abstraction;
+- failover/routing;
+- usage/cost controls;
+- request observability;
+- gateway-level policy.
+
+MIRRORNODE must not imply that routing alone equals capability continuity. Routing changes where a request goes; continuity requires proving the replacement remains eligible for the governed function.
+
+### Governance / agent control planes
+
+Examples include Arthur, Fiddler, Credo AI, Airia, Check Point, and related enterprise governance/security products.
+
+They already market combinations of:
+
+- model/framework/cloud agnosticism;
+- discovery and inventory;
+- guardrails and runtime enforcement;
+- policy and compliance workflows;
+- observability/evaluations;
+- audit-ready evidence;
+- model change/deprecation management.
+
+MIRRORNODE must not claim uniqueness for any of those feature categories.
+
+### AI continuity / behavioral integrity
+
+Toriel currently markets “the control plane for AI continuity,” focused on independent behavioral fingerprinting, hidden model/system change, drift/fracture detection, and continuity-aware assurance.
+
+This is close enough to MIRRORNODE's public problem framing that careless wording could look derivative even if independently developed.
+
+The intended distinction is:
+
+- Toriel: **is the effective AI system still behaviorally the same?**
+- MIRRORNODE: **does the required function remain eligible, governed by the same authority ceiling, and reconstructable from durable evidence when the substrate changes?**
+
+Behavioral continuity can become one input to that broader question; MIRRORNODE should not compete by pretending behavioral fingerprinting is its unique invention.
+
+### Local/owned inference
+
+Other companies already frame local or owned inference as protection against provider-controlled capability loss. MIRRORNODE therefore should not make “run an open model yourself” the differentiator.
+
+The stronger claim to earn is that owned inference participates in the **same governed function contract and evidence/authority system** as hosted cognition.
+
+## Differentiation to test and defend
+
+The combination that may be meaningfully distinctive is:
+
+- **function identity outside the model**;
+- **substrate eligibility by acceptance contract rather than availability**;
+- **authority ceiling that does not expand with model capability**;
 - **evidence continuity outside model memory**;
 - **failure lineage retained as part of future verification**;
+- **explicit refusal to call a lower-quality substrate a valid fallback when it misses the contract**;
 - **a low-cost structural measurement product before infrastructure remediation is sold.**
+
+This is a hypothesis to prove through product execution, not a uniqueness claim to publish now.
 
 ## Market evidence — current external support
 
@@ -159,7 +220,7 @@ Source: https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf
 
 ### Safe now
 
-- MIRRORNODE is **building** capability-continuity/control infrastructure.
+- MIRRORNODE is **building** control infrastructure for AI systems that must remain governable through model/provider change.
 - Osiris Audit measures structural control, continuity, and evidence risks within supplied scope.
 - MIRRORNODE separates model cognition from explicit authority in its architecture.
 - Thea is an owned deterministic verifier with bounded current claims.
@@ -183,6 +244,7 @@ Source: https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf
 - “No vendor lock-in.”
 - “Enterprise-grade” as a substitute for concrete controls.
 - “Only platform that…” without defensible category research.
+- “We invented capability continuity.”
 - uncited numerical claims on the public front door.
 
 ## Osiris deliverable language
@@ -195,7 +257,7 @@ Use evidence-backed deliverable classes instead:
 2. **Substrate Exposure Findings**
 3. **Authority Boundary Findings**
 4. **Evidence Continuity Gaps**
-5. **Failure / Recovery Observations**
+5. **Failure / Recovery Observations** where evidence supports them
 6. **Prioritized Remediation Path**
 7. **Explicit Unknowns and Scope Limits**
 
@@ -236,7 +298,7 @@ Audit findings qualify the infrastructure conversation rather than the infrastru
 ## Launch narrative sequence
 
 1. **What actually breaks when the model changes** — concrete failure modes, no product pitch until the end.
-2. **Capability Continuity Invariant v0.1** — the architectural rule and its limits.
+2. **Capability Continuity Invariant v0.1** — the architectural rule and its limits; explicitly descriptive, not a uniqueness claim.
 3. **The first product is the measurement** — why Osiris exists before the full control infrastructure is sold.
 
 ## Tone
