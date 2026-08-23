@@ -14,7 +14,7 @@ export function SurfaceHero() {
             </div>
             <div>
               <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-200">MIRRORNODE</p>
-              <p className="text-sm text-white/55">Capability continuity. Governed authority.</p>
+              <p className="text-sm text-white/55">Capability continuity. Explicit authority. Durable evidence.</p>
             </div>
           </div>
         </nav>
@@ -22,29 +22,29 @@ export function SurfaceHero() {
         <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)] lg:items-end">
           <div className="max-w-3xl">
             <p className="mb-4 font-mono text-xs uppercase tracking-[0.24em] text-cyan-200">
-              Controlled AI infrastructure
+              Capability continuity for AI systems
             </p>
             <h1 className="max-w-4xl text-5xl font-semibold leading-[0.92] tracking-tight text-white md:text-7xl">
               AI systems that stay under your control when the model changes.
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-white/65">
-              MIRRORNODE is building provider-independent control infrastructure around three things that should survive a substrate change: required capability, explicit authority boundaries, and verifiable evidence.
+              MIRRORNODE separates the intelligence substrate from the control system around it so the business function, authority boundary, and operating evidence do not have to belong to one model provider.
             </p>
             <p className="mt-5 max-w-2xl text-base leading-7 text-white/50">
-              The first product is Osiris Audit v1: a human-reviewed structural audit of the AI system you already operate, including where provider dependence, authority blur, evidence gaps, and continuity failures can become business risk. $149. Target delivery: three business days after payment and complete intake.
+              Start with Osiris Audit v1: a human-reviewed structural assessment of where your current AI stack is dependent, where authority has blurred into the model layer, and whether the evidence needed to change course actually survives. $149. Target delivery: three business days after payment and complete intake.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Link
                 href="/audit"
                 className="rounded-lg bg-cyan-200 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05070a]"
               >
-                Start with Osiris Audit — $149
+                Measure your exposure — $149
               </Link>
               <a
                 href="#surface"
                 className="rounded-lg border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white/85 transition hover:border-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05070a]"
               >
-                Explore MIRRORNODE
+                See the architecture
               </a>
             </div>
           </div>
