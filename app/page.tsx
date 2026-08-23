@@ -6,20 +6,20 @@ import { SurfaceHero } from "@/components/mirrornode/SurfaceHero";
 import { SurfaceLaneSelector } from "@/components/mirrornode/SurfaceLaneSelector";
 
 export const metadata: Metadata = {
-  title: "MIRRORNODE | Controlled AI Infrastructure",
+  title: "MIRRORNODE | Capability Continuity for AI Systems",
   description:
-    "MIRRORNODE is building provider-independent AI control infrastructure for capability continuity, bounded authority, and verifiable evidence across changing models and compute.",
+    "MIRRORNODE is building control infrastructure so critical AI capability, explicit authority boundaries, and verifiable evidence can survive changes in models, providers, credentials, and compute.",
   openGraph: {
-    title: "MIRRORNODE | Controlled AI Infrastructure",
+    title: "MIRRORNODE | Capability Continuity for AI Systems",
     description:
-      "Provider-independent AI control infrastructure for capability continuity, bounded authority, and verifiable evidence.",
+      "Models are replaceable. Your capability, authority, and evidence should not be.",
     type: "website",
   },
   twitter: {
     card: "summary",
-    title: "MIRRORNODE | Controlled AI Infrastructure",
+    title: "MIRRORNODE | Capability Continuity for AI Systems",
     description:
-      "Provider-independent AI control infrastructure for capability continuity, bounded authority, and verifiable evidence.",
+      "Models are replaceable. Your capability, authority, and evidence should not be.",
   },
 };
 
