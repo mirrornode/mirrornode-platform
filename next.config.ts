@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-const projectRoot = path.dirname(fileURLToPath(import.meta.url));
+// Anchor Turbopack to the package working directory.
+// This remains stable in Git worktrees and Vercel, where npm runs from the project root.
+const projectRoot = path.resolve(process.cwd());
 
 const nextConfig: NextConfig = {
   turbopack: {
