@@ -6,11 +6,7 @@ import { mopconCasesEnv } from '@/lib/env/mopconCases';
 
 export const dynamic = 'force-dynamic';
 
-const AUDIT_FLOW = 'osiris-audit-v1';
-const PURCHASE_TABLE = 'guest_audit_purchases';
-const ACTIONABLE_PAGE_SIZE = 500;
-const ACTIONABLE_RECHECK_BATCH_SIZE = 100;
-const TERMINAL_HISTORY_LIMIT = 100;
+const SNAPSHOT_RPC = 'mopcon_case_projection';
 const ACTIONABLE_FULFILLMENT_STATUSES = [
   'intake_pending',
   'intake_complete',
@@ -18,8 +14,7 @@ const ACTIONABLE_FULFILLMENT_STATUSES = [
   'paused',
 ];
 const TERMINAL_FULFILLMENT_STATUSES = ['delivered', 'refunded'];
-const PROJECTION_FIELDS =
-  'id,customer_email,flow,status,fulfillment_status,created_at,updated_at,intake_submitted_at,operator_reviewed_at,fulfillment_started_at,delivered_at,intake_artifact_links';
+const TERMINAL_HISTORY_LIMIT = 100;
 
 function sha256(value: string): Buffer {
   return createHash('sha256').update(value).digest();
@@ -38,13 +33,9 @@ function authorized(request: NextRequest): boolean {
 
 function maskEmail(value: string | null): string | null {
   if (!value) return null;
-
   const at = value.indexOf('@');
   if (at <= 0 || at === value.length - 1) return '***';
-
-  const local = value.slice(0, at);
-  const domain = value.slice(at + 1);
-  return `${local.slice(0, 1)}***@${domain}`;
+  return `${value.slice(0, 1)}***@${value.slice(at + 1)}`;
 }
 
 type PurchaseProjectionRow = {
@@ -96,99 +87,13 @@ export async function GET(request: NextRequest): Promise<Response> {
   const supabase = createClient(
     mopconCasesEnv.SUPABASE_URL,
     mopconCasesEnv.SUPABASE_SERVICE_ROLE_KEY,
-    {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    }
+    { auth: { persistSession: false, autoRefreshToken: false } }
   );
 
-  const actionableRows: PurchaseProjectionRow[] = [];
-  let actionableCursor: string | null = null;
+  const { data, error } = await supabase.rpc(SNAPSHOT_RPC);
+  if (error) return projectionError(error.message);
 
-  for (;;) {
-    let query = supabase
-      .from(PURCHASE_TABLE)
-      .select(PROJECTION_FIELDS)
-      .eq('flow', AUDIT_FLOW)
-      .in('fulfillment_status', ACTIONABLE_FULFILLMENT_STATUSES);
-
-    if (actionableCursor) {
-      query = query.lt('id', actionableCursor);
-    }
-
-    const { data, error } = await query
-      .order('id', { ascending: false })
-      .limit(ACTIONABLE_PAGE_SIZE);
-
-    if (error) {
-      return projectionError(error.message);
-    }
-
-    const page = (data ?? []) as PurchaseProjectionRow[];
-    actionableRows.push(...page);
-
-    if (page.length < ACTIONABLE_PAGE_SIZE) break;
-
-    const nextCursor = page.at(-1)?.id;
-    if (!nextCursor || nextCursor === actionableCursor) {
-      return projectionError('Actionable case cursor did not advance.');
-    }
-    actionableCursor = nextCursor;
-  }
-
-  const { data: terminalData, error: terminalError } = await supabase
-    .from(PURCHASE_TABLE)
-    .select(PROJECTION_FIELDS)
-    .eq('flow', AUDIT_FLOW)
-    .in('fulfillment_status', TERMINAL_FULFILLMENT_STATUSES)
-    .order('created_at', { ascending: false })
-    .order('id', { ascending: false })
-    .limit(TERMINAL_HISTORY_LIMIT);
-
-  if (terminalError) {
-    return projectionError(terminalError.message);
-  }
-
-  const terminalRows = (terminalData ?? []) as PurchaseProjectionRow[];
-
-  // The terminal history is intentionally capped, so a case that was actionable
-  // at the start of this request may transition to terminal state without
-  // appearing in terminalRows. Re-read every initially-actionable id after the
-  // terminal query and use that later observation for the final projection.
-  const actionableIds = [...new Set(actionableRows.map((row) => row.id))];
-  const recheckedActionableRows: PurchaseProjectionRow[] = [];
-
-  for (let offset = 0; offset < actionableIds.length; offset += ACTIONABLE_RECHECK_BATCH_SIZE) {
-    const batch = actionableIds.slice(offset, offset + ACTIONABLE_RECHECK_BATCH_SIZE);
-    const { data, error } = await supabase
-      .from(PURCHASE_TABLE)
-      .select(PROJECTION_FIELDS)
-      .eq('flow', AUDIT_FLOW)
-      .in('id', batch);
-
-    if (error) {
-      return projectionError(error.message);
-    }
-
-    const currentRows = (data ?? []) as PurchaseProjectionRow[];
-    const currentById = new Map(currentRows.map((row) => [row.id, row]));
-
-    if (currentById.size !== batch.length || batch.some((id) => !currentById.has(id))) {
-      return projectionError('Actionable case recheck did not return every collected case id.');
-    }
-
-    recheckedActionableRows.push(...currentRows);
-  }
-
-  // Terminal history is an earlier observation than the actionable-id recheck.
-  // The recheck therefore wins for ids seen in both sets.
-  const rowsById = new Map<string, PurchaseProjectionRow>();
-  for (const row of terminalRows) rowsById.set(row.id, row);
-  for (const row of recheckedActionableRows) rowsById.set(row.id, row);
-
-  const rows = [...rowsById.values()].sort(compareRowsNewestFirst);
+  const rows = ((data ?? []) as PurchaseProjectionRow[]).sort(compareRowsNewestFirst);
 
   return NextResponse.json(
     {
@@ -198,9 +103,9 @@ export async function GET(request: NextRequest): Promise<Response> {
       projection: 'minimum-operator-case-view',
       mutation: 'disabled',
       coverage: {
-        actionable: 'all matching rows, UUID-keyset paged and id-rechecked',
+        actionable: 'all matching rows from one PostgreSQL statement snapshot',
         actionable_statuses: ACTIONABLE_FULFILLMENT_STATUSES,
-        terminal_history: `latest ${TERMINAL_HISTORY_LIMIT}`,
+        terminal_history: `latest ${TERMINAL_HISTORY_LIMIT} from the same snapshot`,
         terminal_statuses: TERMINAL_FULFILLMENT_STATUSES,
       },
       cases: rows.map((row) => ({
@@ -221,8 +126,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       limitations: [
         'This endpoint intentionally omits Stripe identifiers, raw intake text, artifact URLs, and secrets.',
         'The Platform service-role credential remains server-side and is never returned to MOPCON.',
-        'All actionable fulfillment rows are retrieved with an immutable UUID keyset cursor and re-read by case id after terminal history is queried.',
-        'Terminal history is bounded to the latest 100 rows; a case observed actionable earlier in the request is still rechecked even if a later terminal transition falls outside that cap.',
+        'Actionable cases and bounded terminal history are selected inside one PostgreSQL statement snapshot; the route performs no client-side pagination or status-race reconciliation.',
         'This endpoint implements GET-only projection logic; fulfillment mutation remains outside this surface.',
       ],
     },
