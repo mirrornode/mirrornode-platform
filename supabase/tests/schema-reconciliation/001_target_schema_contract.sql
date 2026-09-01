@@ -28,7 +28,7 @@ declare
   v_id_default text;
   v_session_unique boolean;
 begin
-  select array_agg(a.attname order by key_columns.ordinality)
+  select array_agg(a.attname::text order by key_columns.ordinality)
   into v_pk_columns
   from pg_catalog.pg_constraint c
   join lateral unnest(c.conkey) with ordinality
@@ -70,7 +70,7 @@ begin
     where c.conrelid = 'public.guest_audit_purchases'::regclass
       and c.contype = 'u'
     group by c.oid
-    having array_agg(a.attname order by key_columns.ordinality)
+    having array_agg(a.attname::text order by key_columns.ordinality)
       = array['stripe_session_id']::text[]
   )
   into v_session_unique;

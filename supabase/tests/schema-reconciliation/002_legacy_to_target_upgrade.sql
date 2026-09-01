@@ -57,7 +57,7 @@ begin
     raise exception 'legacy upgrade failed: UUID identities were not backfilled uniquely';
   end if;
 
-  select array_agg(a.attname order by key_columns.ordinality)
+  select array_agg(a.attname::text order by key_columns.ordinality)
   into v_pk_columns
   from pg_catalog.pg_constraint c
   join lateral unnest(c.conkey) with ordinality
