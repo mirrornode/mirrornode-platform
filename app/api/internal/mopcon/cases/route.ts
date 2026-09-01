@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic';
 const AUDIT_FLOW = 'osiris-audit-v1';
 const PURCHASE_TABLE = 'guest_audit_purchases';
 const ACTIONABLE_PAGE_SIZE = 500;
+const ACTIONABLE_RECHECK_BATCH_SIZE = 100;
 const TERMINAL_HISTORY_LIMIT = 100;
 const ACTIONABLE_FULFILLMENT_STATUSES = [
   'intake_pending',
@@ -152,12 +153,40 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const terminalRows = (terminalData ?? []) as PurchaseProjectionRow[];
 
-  // A case can transition between the actionable and terminal reads. The later
-  // terminal read wins for duplicate ids so MOPCON never receives conflicting
-  // copies of the same case from this projection response.
+  // The terminal history is intentionally capped, so a case that was actionable
+  // at the start of this request may transition to terminal state without
+  // appearing in terminalRows. Re-read every initially-actionable id after the
+  // terminal query and use that later observation for the final projection.
+  const actionableIds = [...new Set(actionableRows.map((row) => row.id))];
+  const recheckedActionableRows: PurchaseProjectionRow[] = [];
+
+  for (let offset = 0; offset < actionableIds.length; offset += ACTIONABLE_RECHECK_BATCH_SIZE) {
+    const batch = actionableIds.slice(offset, offset + ACTIONABLE_RECHECK_BATCH_SIZE);
+    const { data, error } = await supabase
+      .from(PURCHASE_TABLE)
+      .select(PROJECTION_FIELDS)
+      .eq('flow', AUDIT_FLOW)
+      .in('id', batch);
+
+    if (error) {
+      return projectionError(error.message);
+    }
+
+    const currentRows = (data ?? []) as PurchaseProjectionRow[];
+    const currentById = new Map(currentRows.map((row) => [row.id, row]));
+
+    if (currentById.size !== batch.length || batch.some((id) => !currentById.has(id))) {
+      return projectionError('Actionable case recheck did not return every collected case id.');
+    }
+
+    recheckedActionableRows.push(...currentRows);
+  }
+
+  // Terminal history is an earlier observation than the actionable-id recheck.
+  // The recheck therefore wins for ids seen in both sets.
   const rowsById = new Map<string, PurchaseProjectionRow>();
-  for (const row of actionableRows) rowsById.set(row.id, row);
   for (const row of terminalRows) rowsById.set(row.id, row);
+  for (const row of recheckedActionableRows) rowsById.set(row.id, row);
 
   const rows = [...rowsById.values()].sort(compareRowsNewestFirst);
 
@@ -169,7 +198,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       projection: 'minimum-operator-case-view',
       mutation: 'disabled',
       coverage: {
-        actionable: 'all matching rows, UUID-keyset paged',
+        actionable: 'all matching rows, UUID-keyset paged and id-rechecked',
         actionable_statuses: ACTIONABLE_FULFILLMENT_STATUSES,
         terminal_history: `latest ${TERMINAL_HISTORY_LIMIT}`,
         terminal_statuses: TERMINAL_FULFILLMENT_STATUSES,
@@ -192,8 +221,8 @@ export async function GET(request: NextRequest): Promise<Response> {
       limitations: [
         'This endpoint intentionally omits Stripe identifiers, raw intake text, artifact URLs, and secrets.',
         'The Platform service-role credential remains server-side and is never returned to MOPCON.',
-        'All actionable fulfillment rows are retrieved with an immutable UUID keyset cursor; terminal history is bounded to the latest 100 rows.',
-        'Duplicate case ids observed across a concurrent status transition are collapsed, preferring the later terminal read.',
+        'All actionable fulfillment rows are retrieved with an immutable UUID keyset cursor and re-read by case id after terminal history is queried.',
+        'Terminal history is bounded to the latest 100 rows; a case observed actionable earlier in the request is still rechecked even if a later terminal transition falls outside that cap.',
         'This endpoint implements GET-only projection logic; fulfillment mutation remains outside this surface.',
       ],
     },
