@@ -71,6 +71,11 @@ function createdAtMillis(row: PurchaseProjectionRow): number {
   return Number.isNaN(value) ? 0 : value;
 }
 
+function compareRowsNewestFirst(a: PurchaseProjectionRow, b: PurchaseProjectionRow): number {
+  const timeDelta = createdAtMillis(b) - createdAtMillis(a);
+  return timeDelta !== 0 ? timeDelta : b.id.localeCompare(a.id);
+}
+
 function projectionError(message: string): Response {
   console.error('[mopcon-cases] Read-only projection failed:', message);
   return NextResponse.json(
@@ -99,15 +104,22 @@ export async function GET(request: NextRequest): Promise<Response> {
   );
 
   const actionableRows: PurchaseProjectionRow[] = [];
+  let actionableCursor: string | null = null;
 
-  for (let offset = 0; ; offset += ACTIONABLE_PAGE_SIZE) {
-    const { data, error } = await supabase
+  for (;;) {
+    let query = supabase
       .from(PURCHASE_TABLE)
       .select(PROJECTION_FIELDS)
       .eq('flow', AUDIT_FLOW)
-      .in('fulfillment_status', ACTIONABLE_FULFILLMENT_STATUSES)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + ACTIONABLE_PAGE_SIZE - 1);
+      .in('fulfillment_status', ACTIONABLE_FULFILLMENT_STATUSES);
+
+    if (actionableCursor) {
+      query = query.lt('id', actionableCursor);
+    }
+
+    const { data, error } = await query
+      .order('id', { ascending: false })
+      .limit(ACTIONABLE_PAGE_SIZE);
 
     if (error) {
       return projectionError(error.message);
@@ -117,6 +129,12 @@ export async function GET(request: NextRequest): Promise<Response> {
     actionableRows.push(...page);
 
     if (page.length < ACTIONABLE_PAGE_SIZE) break;
+
+    const nextCursor = page.at(-1)?.id;
+    if (!nextCursor || nextCursor === actionableCursor) {
+      return projectionError('Actionable case cursor did not advance.');
+    }
+    actionableCursor = nextCursor;
   }
 
   const { data: terminalData, error: terminalError } = await supabase
@@ -125,6 +143,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     .eq('flow', AUDIT_FLOW)
     .in('fulfillment_status', TERMINAL_FULFILLMENT_STATUSES)
     .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
     .limit(TERMINAL_HISTORY_LIMIT);
 
   if (terminalError) {
@@ -132,9 +151,15 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 
   const terminalRows = (terminalData ?? []) as PurchaseProjectionRow[];
-  const rows = [...actionableRows, ...terminalRows].sort(
-    (a, b) => createdAtMillis(b) - createdAtMillis(a)
-  );
+
+  // A case can transition between the actionable and terminal reads. The later
+  // terminal read wins for duplicate ids so MOPCON never receives conflicting
+  // copies of the same case from this projection response.
+  const rowsById = new Map<string, PurchaseProjectionRow>();
+  for (const row of actionableRows) rowsById.set(row.id, row);
+  for (const row of terminalRows) rowsById.set(row.id, row);
+
+  const rows = [...rowsById.values()].sort(compareRowsNewestFirst);
 
   return NextResponse.json(
     {
@@ -144,7 +169,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       projection: 'minimum-operator-case-view',
       mutation: 'disabled',
       coverage: {
-        actionable: 'all matching rows, internally paged',
+        actionable: 'all matching rows, UUID-keyset paged',
         actionable_statuses: ACTIONABLE_FULFILLMENT_STATUSES,
         terminal_history: `latest ${TERMINAL_HISTORY_LIMIT}`,
         terminal_statuses: TERMINAL_FULFILLMENT_STATUSES,
@@ -167,7 +192,8 @@ export async function GET(request: NextRequest): Promise<Response> {
       limitations: [
         'This endpoint intentionally omits Stripe identifiers, raw intake text, artifact URLs, and secrets.',
         'The Platform service-role credential remains server-side and is never returned to MOPCON.',
-        'All actionable fulfillment rows are retrieved with internal pagination; terminal history is bounded to the latest 100 rows.',
+        'All actionable fulfillment rows are retrieved with an immutable UUID keyset cursor; terminal history is bounded to the latest 100 rows.',
+        'Duplicate case ids observed across a concurrent status transition are collapsed, preferring the later terminal read.',
         'This endpoint implements GET-only projection logic; fulfillment mutation remains outside this surface.',
       ],
     },
