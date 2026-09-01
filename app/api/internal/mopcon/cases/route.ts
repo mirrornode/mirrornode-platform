@@ -8,7 +8,17 @@ export const dynamic = 'force-dynamic';
 
 const AUDIT_FLOW = 'osiris-audit-v1';
 const PURCHASE_TABLE = 'guest_audit_purchases';
-const MAX_CASES = 100;
+const ACTIONABLE_PAGE_SIZE = 500;
+const TERMINAL_HISTORY_LIMIT = 100;
+const ACTIONABLE_FULFILLMENT_STATUSES = [
+  'intake_pending',
+  'intake_complete',
+  'fulfillment_started',
+  'paused',
+];
+const TERMINAL_FULFILLMENT_STATUSES = ['delivered', 'refunded'];
+const PROJECTION_FIELDS =
+  'id,customer_email,flow,status,fulfillment_status,created_at,updated_at,intake_submitted_at,operator_reviewed_at,fulfillment_started_at,delivered_at,intake_artifact_links';
 
 function sha256(value: string): Buffer {
   return createHash('sha256').update(value).digest();
@@ -55,6 +65,20 @@ function artifactCount(value: unknown): number {
   return Array.isArray(value) ? value.length : 0;
 }
 
+function createdAtMillis(row: PurchaseProjectionRow): number {
+  if (!row.created_at) return 0;
+  const value = Date.parse(row.created_at);
+  return Number.isNaN(value) ? 0 : value;
+}
+
+function projectionError(message: string): Response {
+  console.error('[mopcon-cases] Read-only projection failed:', message);
+  return NextResponse.json(
+    { error: 'Unable to read case projection.' },
+    { status: 502, headers: { 'cache-control': 'no-store' } }
+  );
+}
+
 export async function GET(request: NextRequest): Promise<Response> {
   if (!authorized(request)) {
     return NextResponse.json(
@@ -74,24 +98,43 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
   );
 
-  const { data, error } = await supabase
-    .from(PURCHASE_TABLE)
-    .select(
-      'id,customer_email,flow,status,fulfillment_status,created_at,updated_at,intake_submitted_at,operator_reviewed_at,fulfillment_started_at,delivered_at,intake_artifact_links'
-    )
-    .eq('flow', AUDIT_FLOW)
-    .order('created_at', { ascending: false })
-    .limit(MAX_CASES);
+  const actionableRows: PurchaseProjectionRow[] = [];
 
-  if (error) {
-    console.error('[mopcon-cases] Read-only projection failed:', error.message);
-    return NextResponse.json(
-      { error: 'Unable to read case projection.' },
-      { status: 502, headers: { 'cache-control': 'no-store' } }
-    );
+  for (let offset = 0; ; offset += ACTIONABLE_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from(PURCHASE_TABLE)
+      .select(PROJECTION_FIELDS)
+      .eq('flow', AUDIT_FLOW)
+      .in('fulfillment_status', ACTIONABLE_FULFILLMENT_STATUSES)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + ACTIONABLE_PAGE_SIZE - 1);
+
+    if (error) {
+      return projectionError(error.message);
+    }
+
+    const page = (data ?? []) as PurchaseProjectionRow[];
+    actionableRows.push(...page);
+
+    if (page.length < ACTIONABLE_PAGE_SIZE) break;
   }
 
-  const rows = (data ?? []) as PurchaseProjectionRow[];
+  const { data: terminalData, error: terminalError } = await supabase
+    .from(PURCHASE_TABLE)
+    .select(PROJECTION_FIELDS)
+    .eq('flow', AUDIT_FLOW)
+    .in('fulfillment_status', TERMINAL_FULFILLMENT_STATUSES)
+    .order('created_at', { ascending: false })
+    .limit(TERMINAL_HISTORY_LIMIT);
+
+  if (terminalError) {
+    return projectionError(terminalError.message);
+  }
+
+  const terminalRows = (terminalData ?? []) as PurchaseProjectionRow[];
+  const rows = [...actionableRows, ...terminalRows].sort(
+    (a, b) => createdAtMillis(b) - createdAtMillis(a)
+  );
 
   return NextResponse.json(
     {
@@ -100,6 +143,12 @@ export async function GET(request: NextRequest): Promise<Response> {
       source: 'mirrornode-platform/guest_audit_purchases',
       projection: 'minimum-operator-case-view',
       mutation: 'disabled',
+      coverage: {
+        actionable: 'all matching rows, internally paged',
+        actionable_statuses: ACTIONABLE_FULFILLMENT_STATUSES,
+        terminal_history: `latest ${TERMINAL_HISTORY_LIMIT}`,
+        terminal_statuses: TERMINAL_FULFILLMENT_STATUSES,
+      },
       cases: rows.map((row) => ({
         case_id: row.id,
         customer: maskEmail(row.customer_email),
@@ -118,6 +167,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       limitations: [
         'This endpoint intentionally omits Stripe identifiers, raw intake text, artifact URLs, and secrets.',
         'The Platform service-role credential remains server-side and is never returned to MOPCON.',
+        'All actionable fulfillment rows are retrieved with internal pagination; terminal history is bounded to the latest 100 rows.',
         'This endpoint implements GET-only projection logic; fulfillment mutation remains outside this surface.',
       ],
     },
