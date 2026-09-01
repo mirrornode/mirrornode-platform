@@ -5,8 +5,8 @@ const mocks = vi.hoisted(() => ({
   select: vi.fn(),
   eq: vi.fn(),
   inFilter: vi.fn(),
+  lt: vi.fn(),
   order: vi.fn(),
-  range: vi.fn(),
   limit: vi.fn(),
 }));
 
@@ -42,7 +42,7 @@ function row(id: string, fulfillmentStatus = 'intake_complete') {
     intake_submitted_at: '2026-08-31T00:30:00.000Z',
     operator_reviewed_at: null,
     fulfillment_started_at: null,
-    delivered_at: null,
+    delivered_at: fulfillmentStatus === 'delivered' ? '2026-08-31T02:00:00.000Z' : null,
     intake_artifact_links: ['https://example.com/private-artifact'],
     intake_system_summary: 'must never be projected',
     stripe_session_id: 'cs_secret',
@@ -55,15 +55,15 @@ describe('GET /api/internal/mopcon/cases', () => {
     mocks.select.mockReset();
     mocks.eq.mockReset();
     mocks.inFilter.mockReset();
+    mocks.lt.mockReset();
     mocks.order.mockReset();
-    mocks.range.mockReset();
     mocks.limit.mockReset();
 
     mocks.select.mockReturnValue({ eq: mocks.eq });
     mocks.eq.mockReturnValue({ in: mocks.inFilter });
-    mocks.inFilter.mockReturnValue({ order: mocks.order });
-    mocks.order.mockReturnValue({ range: mocks.range, limit: mocks.limit });
-    mocks.range.mockResolvedValue({ data: [], error: null });
+    mocks.inFilter.mockReturnValue({ lt: mocks.lt, order: mocks.order });
+    mocks.lt.mockReturnValue({ order: mocks.order });
+    mocks.order.mockReturnValue({ order: mocks.order, limit: mocks.limit });
     mocks.limit.mockResolvedValue({ data: [], error: null });
 
     mocks.createClient.mockReturnValue({
@@ -86,7 +86,7 @@ describe('GET /api/internal/mopcon/cases', () => {
   });
 
   it('returns only the minimum masked case projection', async () => {
-    mocks.range.mockResolvedValueOnce({
+    mocks.limit.mockResolvedValueOnce({
       data: [row('11111111-1111-1111-1111-111111111111')],
       error: null,
     });
@@ -123,32 +123,56 @@ describe('GET /api/internal/mopcon/cases', () => {
       'paused',
     ]);
     expect(mocks.inFilter).toHaveBeenCalledWith('fulfillment_status', ['delivered', 'refunded']);
-    expect(mocks.range).toHaveBeenCalledWith(0, 499);
+    expect(mocks.order).toHaveBeenCalledWith('id', { ascending: false });
+    expect(mocks.order).toHaveBeenCalledWith('created_at', { ascending: false });
+    expect(mocks.limit).toHaveBeenCalledWith(500);
     expect(mocks.limit).toHaveBeenCalledWith(100);
   });
 
-  it('continues paging until every actionable case has been retrieved', async () => {
-    const firstPage = Array.from({ length: 500 }, (_, index) =>
-      row(`case-${String(index).padStart(4, '0')}`)
-    );
-    const finalPage = [row('case-0500')];
+  it('uses an immutable UUID keyset cursor until every actionable case has been retrieved', async () => {
+    const firstPage = [
+      ...Array.from({ length: 499 }, (_, index) => row(`case-${String(999 - index).padStart(4, '0')}`)),
+      row('case-cursor'),
+    ];
+    const finalPage = [row('case-after-cursor')];
 
-    mocks.range
+    mocks.limit
       .mockResolvedValueOnce({ data: firstPage, error: null })
-      .mockResolvedValueOnce({ data: finalPage, error: null });
+      .mockResolvedValueOnce({ data: finalPage, error: null })
+      .mockResolvedValueOnce({ data: [], error: null });
 
     const res = await GET(request('read-secret-test') as never);
     const body = await res.json();
 
     expect(res.status).toBe(200);
     expect(body.cases).toHaveLength(501);
-    expect(mocks.range).toHaveBeenNthCalledWith(1, 0, 499);
-    expect(mocks.range).toHaveBeenNthCalledWith(2, 500, 999);
-    expect(body.coverage.actionable).toBe('all matching rows, internally paged');
+    expect(mocks.lt).toHaveBeenCalledTimes(1);
+    expect(mocks.lt).toHaveBeenCalledWith('id', 'case-cursor');
+    expect(mocks.limit).toHaveBeenNthCalledWith(1, 500);
+    expect(mocks.limit).toHaveBeenNthCalledWith(2, 500);
+    expect(mocks.limit).toHaveBeenNthCalledWith(3, 100);
+    expect(body.coverage.actionable).toBe('all matching rows, UUID-keyset paged');
+  });
+
+  it('deduplicates a case that transitions to terminal state during the read', async () => {
+    const caseId = '22222222-2222-2222-2222-222222222222';
+
+    mocks.limit
+      .mockResolvedValueOnce({ data: [row(caseId, 'fulfillment_started')], error: null })
+      .mockResolvedValueOnce({ data: [row(caseId, 'delivered')], error: null });
+
+    const res = await GET(request('read-secret-test') as never);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.cases).toHaveLength(1);
+    expect(body.cases[0].case_id).toBe(caseId);
+    expect(body.cases[0].fulfillment_status).toBe('delivered');
+    expect(body.cases[0].delivered_at).toBe('2026-08-31T02:00:00.000Z');
   });
 
   it('returns 502 without leaking database details when actionable projection fails', async () => {
-    mocks.range.mockResolvedValueOnce({
+    mocks.limit.mockResolvedValueOnce({
       data: null,
       error: { message: 'sensitive database detail' },
     });
@@ -162,10 +186,12 @@ describe('GET /api/internal/mopcon/cases', () => {
   });
 
   it('returns 502 without leaking database details when terminal-history projection fails', async () => {
-    mocks.limit.mockResolvedValueOnce({
-      data: null,
-      error: { message: 'sensitive terminal database detail' },
-    });
+    mocks.limit
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({
+        data: null,
+        error: { message: 'sensitive terminal database detail' },
+      });
 
     const res = await GET(request('read-secret-test') as never);
     const body = await res.json();
