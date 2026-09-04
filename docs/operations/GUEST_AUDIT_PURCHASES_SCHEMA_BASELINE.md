@@ -1,7 +1,7 @@
 # Guest Audit Purchases Schema Baseline
 
-**Status:** Schema reconciliation reference  
-**Scope:** `public.guest_audit_purchases` identity baseline only  
+**Status:** Schema reconciliation reference
+**Scope:** `public.guest_audit_purchases` identity baseline only
 **Non-goals:** Osiris fulfillment receipts, transactional command RPCs, HTTP
 command endpoints, command credentials, actor binding, release/delivery
 authority, workflow orchestration, and MOPCON mutation
@@ -96,14 +96,15 @@ duplicate session IDs.
 The Schema Baseline Reconciliation PR may merge only after automated tests
 demonstrate:
 
-1. A pristine repository replay reaches the target identity contract.
+1. A target-shaped fixture satisfies the exact identity contract.
 2. A seeded legacy Stripe-session-primary-key table upgrades to target shape
    without losing rows or changing business/fulfillment values.
 3. A target-shaped fixture matching the observed live key shape is a strict
    no-op.
 4. The no-op fixture retains identical RLS enablement, policy definitions, and
    table grants, including `service_role`.
-5. Unexpected primary-key shapes and legacy inbound foreign keys fail closed.
+5. Unexpected primary-key shapes and legacy inbound foreign keys fail closed
+   without changing the rejected fixture.
 6. A rerun after upgrade preserves assigned UUID identities.
 
 ## Boundary

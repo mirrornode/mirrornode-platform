@@ -23,7 +23,8 @@ delivery authority, or MOPCON mutation surface.
 
 Run these tests only against a disposable PostgreSQL or Supabase test
 database. The runner requires an explicit `DATABASE_URL`; it has no implicit
-default connection.
+default connection. It also requires both an explicit destructive-test
+acknowledgement and a marker table carrying the exact guard comment.
 
 The runner refuses a connection string containing the known production project
 reference:
@@ -36,9 +37,25 @@ This string check is a guardrail, not authorization to use any other shared or
 production environment. The operator remains responsible for supplying a
 disposable database.
 
+Create the guard only inside the disposable database:
+
+```sql
+create table public.mirrornode_schema_reconciliation_disposable_guard (
+  singleton boolean primary key default true check (singleton)
+);
+
+comment on table public.mirrornode_schema_reconciliation_disposable_guard is
+  'MIRRORNODE_DISPOSABLE_SCHEMA_RECONCILIATION_TEST_DATABASE';
+```
+
+The runner checks the marker before executing any fixture. The marker and the
+explicit acknowledgement are independent safeguards; neither one alone is
+sufficient.
+
 ## Running
 
 ```bash
+SCHEMA_RECONCILIATION_TEST_ACK=I_UNDERSTAND_THIS_DROPS_PUBLIC_GUEST_AUDIT_PURCHASES \
 DATABASE_URL="$DISPOSABLE_DATABASE_URL" \
   supabase/tests/schema-reconciliation/run.sh
 ```
@@ -93,6 +110,11 @@ The runner fails if:
 
 The post-failure assertion removes its disposable snapshot table after
 verification and commits that cleanup in the disposable database.
+
+The runner also constructs a supported legacy table with an inbound foreign
+key. It requires the migration to reject that shape with SQLSTATE `P0001`,
+then verifies that the parent key, inbound relationship, and fixture rows are
+unchanged before cleaning up the fixture.
 
 ## Test convention
 
