@@ -154,8 +154,8 @@ begin
     return;
   end if;
 
-  if v_target.flow <> 'osiris-audit-v1'
-     or v_target.status <> 'paid'
+  if v_target.flow is distinct from 'osiris-audit-v1'
+     or v_target.status is distinct from 'paid'
      or v_target.customer_email is null
      or v_target.fulfillment_status <> 'intake_complete'
      or v_target.intake_submitted_at is null
