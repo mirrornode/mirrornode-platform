@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
     concerns,
     artifactLinks,
     additionalContext,
+    authorizationConfirmed,
   } = parsed.data;
 
   const stripe = new Stripe(stripeEnv.STRIPE_SECRET_KEY, {
@@ -77,9 +78,6 @@ export async function POST(req: NextRequest) {
   );
   const now = new Date().toISOString();
 
-  // Preserve payment evidence even when the success redirect wins the race
-  // against Stripe's webhook. Fulfillment columns are intentionally omitted
-  // so database defaults and any later Operator state are not overwritten.
   const { error: paymentError } = await supabase
     .from(PURCHASE_TABLE)
     .upsert(
@@ -105,8 +103,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // The database predicate makes duplicate or out-of-order submissions
-  // deterministic: only an intake_pending row with no prior submission moves.
   const { data: updatedRows, error: intakeError } = await supabase
     .from(PURCHASE_TABLE)
     .update({
@@ -116,6 +112,7 @@ export async function POST(req: NextRequest) {
       intake_artifact_links: artifactLinks,
       intake_additional_context: additionalContext || null,
       intake_submitted_at: now,
+      intake_authorization_confirmed_at: authorizationConfirmed ? now : null,
       fulfillment_status: 'intake_complete',
       updated_at: now,
     })

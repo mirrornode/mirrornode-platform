@@ -20,6 +20,7 @@ export default function OsirisAuditIntakeForm({
   const [concerns, setConcerns] = useState('');
   const [artifactLinksText, setArtifactLinksText] = useState('');
   const [additionalContext, setAdditionalContext] = useState('');
+  const [authorizationConfirmed, setAuthorizationConfirmed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +39,11 @@ export default function OsirisAuditIntakeForm({
       return;
     }
 
+    if (!authorizationConfirmed) {
+      setError('Confirm that you are authorized to request assessment of the submitted scope.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -51,6 +57,7 @@ export default function OsirisAuditIntakeForm({
           concerns,
           artifactLinks,
           additionalContext,
+          authorizationConfirmed,
         }),
       });
 
@@ -192,11 +199,25 @@ export default function OsirisAuditIntakeForm({
         <textarea id="additional-context" name="additionalContext" maxLength={4000} rows={4} value={additionalContext} onChange={(event) => setAdditionalContext(event.target.value)} className="mt-2 w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/10" />
       </div>
 
+      <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+        <input
+          type="checkbox"
+          name="authorizationConfirmed"
+          required
+          checked={authorizationConfirmed}
+          onChange={(event) => setAuthorizationConfirmed(event.target.checked)}
+          className="mt-1 h-4 w-4 rounded border-white/20 bg-black/30"
+        />
+        <span className="text-sm leading-6 text-white/70">
+          I confirm that I am authorized to request assessment of the systems, repositories, accounts, and artifacts included in this engagement.
+        </span>
+      </label>
+
       {error ? (
         <p role="alert" className="rounded-lg border border-red-300/20 bg-red-300/10 px-4 py-3 text-sm text-red-100">{error}</p>
       ) : null}
 
-      <button type="submit" disabled={isSubmitting || artifactLinks.length > 5} className="inline-flex min-h-11 items-center justify-center rounded-md bg-cyan-200 px-6 py-3 text-base font-semibold text-slate-950 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-60">
+      <button type="submit" disabled={isSubmitting || artifactLinks.length > 5 || !authorizationConfirmed} className="inline-flex min-h-11 items-center justify-center rounded-md bg-cyan-200 px-6 py-3 text-base font-semibold text-slate-950 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-60">
         {isSubmitting ? 'Submitting intake...' : 'Submit audit intake'}
       </button>
     </form>
