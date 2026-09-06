@@ -8,6 +8,7 @@ begin;
 
 alter table public.guest_audit_purchases
   add column if not exists intake_authorization_confirmed_at timestamp with time zone,
+  add column if not exists intake_channel_authorization_text text,
   add column if not exists fulfillment_start_event_id uuid,
   add column if not exists fulfillment_start_idempotency_key uuid,
   add column if not exists fulfillment_started_by text,
@@ -41,6 +42,9 @@ $$;
 
 comment on column public.guest_audit_purchases.intake_authorization_confirmed_at is
   'Timestamp when the customer explicitly confirmed authorization to request assessment of the submitted scope.';
+
+comment on column public.guest_audit_purchases.intake_channel_authorization_text is
+  'Exact channel authorization statement confirmed with the intake.';
 
 comment on column public.guest_audit_purchases.fulfillment_start_event_id is
   'Immutable receipt identifier for the Operator-controlled fulfillment start event.';
@@ -163,6 +167,7 @@ begin
      or v_target.intake_system_summary is null
      or v_target.intake_primary_goal is null
      or v_target.intake_concerns is null
+     or nullif(pg_catalog.btrim(v_target.intake_channel_authorization_text), '') is null
      or v_target.operator_reviewed_at is not null
      or v_target.fulfillment_started_at is not null
      or v_target.fulfillment_start_idempotency_key is not null then

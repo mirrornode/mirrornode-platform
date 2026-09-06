@@ -2,6 +2,8 @@
 
 import { useState, type FormEvent } from 'react';
 
+import { OSIRIS_AUDIT_V1_CHANNEL_AUTHORIZATION_TEXT } from '@/lib/osiris-audit/authorization';
+
 type IntakeResponse = {
   accepted?: boolean;
   fulfillmentStatus?: string;
@@ -209,7 +211,7 @@ export default function OsirisAuditIntakeForm({
           className="mt-1 h-4 w-4 rounded border-white/20 bg-black/30"
         />
         <span className="text-sm leading-6 text-white/70">
-          I confirm that I am authorized to request assessment of the systems, repositories, accounts, and artifacts included in this engagement.
+          {OSIRIS_AUDIT_V1_CHANNEL_AUTHORIZATION_TEXT}
         </span>
       </label>
 

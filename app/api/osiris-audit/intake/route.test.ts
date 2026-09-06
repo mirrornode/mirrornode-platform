@@ -35,6 +35,7 @@ vi.mock('@/lib/env/stripe', () => ({
 }));
 
 import { POST } from './route';
+import { OSIRIS_AUDIT_V1_CHANNEL_AUTHORIZATION_TEXT } from '@/lib/osiris-audit/authorization';
 
 const validBody = {
   sessionId: 'cs_test_paid',
@@ -221,6 +222,8 @@ describe('POST /api/osiris-audit/intake', () => {
         intake_primary_goal: validBody.primaryGoal,
         intake_artifact_links: validBody.artifactLinks,
         intake_authorization_confirmed_at: expect.any(String),
+        intake_channel_authorization_text:
+          OSIRIS_AUDIT_V1_CHANNEL_AUTHORIZATION_TEXT,
         fulfillment_status: 'intake_complete',
       })
     );

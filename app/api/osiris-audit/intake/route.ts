@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
 import { stripeEnv } from '@/lib/env/stripe';
+import { OSIRIS_AUDIT_V1_CHANNEL_AUTHORIZATION_TEXT } from '@/lib/osiris-audit/authorization';
 import { osirisAuditIntakeSchema } from '@/lib/osiris-audit/intake';
 
 export const dynamic = 'force-dynamic';
@@ -33,7 +34,6 @@ export async function POST(req: NextRequest) {
     concerns,
     artifactLinks,
     additionalContext,
-    authorizationConfirmed,
   } = parsed.data;
 
   const stripe = new Stripe(stripeEnv.STRIPE_SECRET_KEY, {
@@ -112,7 +112,9 @@ export async function POST(req: NextRequest) {
       intake_artifact_links: artifactLinks,
       intake_additional_context: additionalContext || null,
       intake_submitted_at: now,
-      intake_authorization_confirmed_at: authorizationConfirmed ? now : null,
+      intake_authorization_confirmed_at: now,
+      intake_channel_authorization_text:
+        OSIRIS_AUDIT_V1_CHANNEL_AUTHORIZATION_TEXT,
       fulfillment_status: 'intake_complete',
       updated_at: now,
     })

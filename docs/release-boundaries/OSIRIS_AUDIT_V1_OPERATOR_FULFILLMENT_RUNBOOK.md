@@ -32,6 +32,7 @@ Before work begins, confirm the private `guest_audit_purchases` record shows:
 - `fulfillment_status = intake_complete`
 - intake summary, goal, and concerns are present
 - `intake_submitted_at` and `intake_authorization_confirmed_at` are present
+- `intake_channel_authorization_text` preserves the exact statement confirmed by the customer
 - review/start timestamps and start idempotency key are still null
 - submitted artifact links, when provided by the customer, are recorded
 - submitted scope fits Osiris Audit v1
@@ -120,7 +121,7 @@ For each case, the Operator must be able to identify:
 - what they paid for: `flow`
 - payment evidence: `status` and Stripe session linkage
 - intake state: `fulfillment_status`, `intake_submitted_at`
-- explicit customer authorization: `intake_authorization_confirmed_at`
+- explicit customer authorization: `intake_authorization_confirmed_at`, `intake_channel_authorization_text`
 - start receipt: `fulfillment_start_event_id`, `fulfillment_start_idempotency_key`, `fulfillment_started_by`, `fulfillment_start_reason`
 - review checkpoint: `operator_reviewed_at`
 - work started: `fulfillment_started_at`
