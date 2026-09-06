@@ -79,6 +79,8 @@ Then open `http://localhost:3000`.
 
 - [`docs/operations/ACTIVE_PRODUCTION_SURFACES.md`](docs/operations/ACTIVE_PRODUCTION_SURFACES.md) — verified production and commercial surfaces
 
+- [`docs/release-boundaries/OSIRIS_AUDIT_V1_OPERATOR_FULFILLMENT_RUNBOOK.md`](docs/release-boundaries/OSIRIS_AUDIT_V1_OPERATOR_FULFILLMENT_RUNBOOK.md) — controlled start, receipt handling, legacy authorization, and rollout prerequisites
+
 ## Project
 
 MIRRORNODE platform repository maintained by the MIRRORNODE project.
