@@ -1,8 +1,6 @@
 name: Deploy Production
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -11,6 +9,9 @@ concurrency:
 
 jobs:
   deploy:
+    # Release freeze: activation requires a reviewed gate implementation.
+    # A manual dispatch or re-enabling this workflow must not deploy by itself.
+    if: ${{ false }}
     name: deploy/production
     runs-on: ubuntu-latest
     timeout-minutes: 20

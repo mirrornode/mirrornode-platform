@@ -49,3 +49,7 @@ Primary reconciliation anchors are maintained in `mirrornode/MIRRORNODE-CORE-HUB
 - Silent promotion of unresolved node/seat placement through presentation copy.
 
 Production promotion remains gated on preview verification, copy review, and normal repository checks.
+
+## Release-control cross-reference
+
+The exclusions above describe this historical public-copy slice. Current deployment containment and the proposed approval sequence are recorded in [deployment gates and release sequence](operations/DEPLOYMENT_GATES_AND_RELEASE_SEQUENCE.md). Preview success and merge approval do not authorize production promotion.

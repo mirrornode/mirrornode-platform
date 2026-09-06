@@ -35,6 +35,9 @@ export const osirisAuditIntakeSchema = z
       .trim()
       .max(4000, 'Additional context must be 4000 characters or fewer')
       .default(''),
+    authorizationConfirmed: z
+      .boolean()
+      .refine((value) => value, 'Authorization confirmation is required'),
   })
   .strict();
 

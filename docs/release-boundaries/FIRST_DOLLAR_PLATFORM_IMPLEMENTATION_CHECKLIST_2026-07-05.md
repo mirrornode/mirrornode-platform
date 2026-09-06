@@ -57,8 +57,8 @@ This checklist does not authorize build or launch by itself. It prepares the wor
 
 - `app/audit/page.tsx`
 - `app/api/checkout/route.ts`
-- `app/api/stripe/webhook/route.ts`
-- `app/success/page.tsx`
+- `app/api/webhook/route.ts`
+- `app/osiris-audit/success/page.tsx`
 - any fulfillment, intake, or Supabase helper used by checkout/webhook
 - any public copy describing Osiris Audit v1
 
@@ -72,3 +72,17 @@ Before code changes, produce:
 - smallest safe implementation patch
 - test plan
 - launch gate checklist
+
+## Controlled release checks (2026-09-06 addendum)
+
+- [ ] Exact SHA and required independent review, lint, tests, build, Canon Gate and database evidence recorded.
+- [ ] Automatic deployment gates verified, including branches without the current configuration.
+- [ ] Vercel project, GitHub repository and Supabase target identities match the release manifest.
+- [ ] Preview data/credentials isolated from production.
+- [ ] Approved migration and its legacy trigger prerequisite verified before application rollout.
+- [ ] Required Operator token/actor and other server configuration verified without printing values.
+- [ ] Genuine authorization present; legacy cases remain blocked until a separately reviewed procedure records consent.
+- [ ] Separate migration, application deployment and case-start approvals retained.
+- [ ] Runtime verification, recovery plan and final receipt completed.
+
+These are release acceptance items, not completed checkboxes. See [deployment gates and release sequence](../operations/DEPLOYMENT_GATES_AND_RELEASE_SEQUENCE.md).
