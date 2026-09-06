@@ -91,6 +91,13 @@ begin
       message = 'invalid Osiris fulfillment start command';
   end if;
 
+  -- Serialize retries and cross-case reuse for this idempotency key before
+  -- inspecting or mutating case state. Hash collisions can only serialize
+  -- unrelated commands; they cannot weaken correctness.
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(p_idempotency_key::text, 0)
+  );
+
   select *
   into v_existing
   from public.guest_audit_purchases
