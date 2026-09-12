@@ -6,10 +6,18 @@ export const metadata = {
   title: "Osiris Audit v1 | MIRRORNODE",
   description:
     "A one-pass structural audit of your AI system, workflow, or automation stack.",
+  alternates: {
+    canonical: "https://mirrornode.xyz/osiris-audit",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
   openGraph: {
     title: "Osiris Audit v1 | MIRRORNODE",
     description:
       "A one-pass structural audit of your AI system, workflow, or automation stack.",
+    url: "https://mirrornode.xyz/osiris-audit",
     type: "website",
   },
   twitter: {
