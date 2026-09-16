@@ -6,12 +6,12 @@ import { domainToNumeraethe } from "@/fusion/types";
 
 import Link from "next/link";
 // ---------------------------------------------------------------------------
-// Telemetry types
+// Runtime evidence types
 // ---------------------------------------------------------------------------
 
 interface AgentTelemetry {
   id: string;
-  status: "nominal" | "degraded" | "offline" | "initializing";
+  status: "nominal" | "degraded" | "offline" | "initializing" | "unknown";
   last_heartbeat_ts: string | null;
   symbolic_depth: number;
   latency_ms: number | null;
@@ -99,15 +99,17 @@ export default function AgentsPage() {
     };
   }, [fetchTelemetry]);
 
-  // Merge manifest agent with live telemetry (manifest is source of truth for identity)
+  // Manifest is authoritative for identity only.
+  // Runtime state must come from runtime evidence and fails closed when absent.
   function resolveAgent(agent: Agent) {
     const live = telemetry.get(agent.id);
     return {
       ...agent,
-      status:          live?.status          ?? agent.status,
-      symbolic_depth:  live?.symbolic_depth  ?? 0,
+      evidence_available: Boolean(live),
+      status:            live?.status            ?? "unknown",
+      symbolic_depth:    live?.symbolic_depth    ?? 0,
       last_heartbeat_ts: live?.last_heartbeat_ts ?? null,
-      latency_ms:      live?.latency_ms      ?? null,
+      latency_ms:        live?.latency_ms        ?? null,
     };
   }
 
@@ -143,12 +145,12 @@ export default function AgentsPage() {
         <div className="flex items-center gap-6">
           {lastUpdated && (
             <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", letterSpacing: "0.12em", color: "var(--text-muted)" }}>
-              SYNCED {timeAgo(lastUpdated)}
+              EVIDENCE UPDATED {timeAgo(lastUpdated)}
             </span>
           )}
           {error && (
             <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", letterSpacing: "0.12em", color: "#ef4444" }}>
-              TELEMETRY OFFLINE
+              RUNTIME EVIDENCE UNAVAILABLE
             </span>
           )}
           <Link
@@ -171,8 +173,12 @@ export default function AgentsPage() {
             Situation Room
           </h1>
           <p style={{ fontSize: "1rem", color: "var(--text-muted)", lineHeight: 1.7, maxWidth: "52ch" }}>
-            {agentList.length} agents initialized across the MIRRORNODE lattice.
-            {loading ? " Acquiring telemetry…" : " Live telemetry active."}
+            {agentList.length} agents registered in the MIRRORNODE manifest.
+            {loading
+              ? " Checking runtime evidence…"
+              : error
+                ? " Runtime evidence unavailable."
+                : " Runtime evidence received."}
           </p>
         </div>
 
@@ -182,8 +188,12 @@ export default function AgentsPage() {
             const agent = resolveAgent(baseAgent);
             const statusColor = getStatusColor(agent.status);
             const numeraetheType = domainToNumeraethe(agent.domain);
-            const depthLabel = getDepthLabel(agent.symbolic_depth);
-            const depthWidth = getDepthBarWidth(agent.symbolic_depth);
+            const depthLabel = agent.evidence_available
+              ? getDepthLabel(agent.symbolic_depth)
+              : "UNAVAILABLE";
+            const depthWidth = agent.evidence_available
+              ? getDepthBarWidth(agent.symbolic_depth)
+              : "0%";
 
             return (
                         <Link
@@ -205,7 +215,7 @@ export default function AgentsPage() {
                     {agent.domain}
                   </span>
 
-                  {/* Live heartbeat pulse */}
+                  {/* Runtime status evidence */}
                   <div className="flex items-center gap-1.5">
                     <span
                       style={{
@@ -248,7 +258,9 @@ export default function AgentsPage() {
                       LATTICE DEPTH
                     </span>
                     <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", letterSpacing: "0.12em", color: statusColor, textTransform: "uppercase" }}>
-                      {depthLabel} · {agent.symbolic_depth}/8
+                      {agent.evidence_available
+                        ? `${depthLabel} · ${agent.symbolic_depth}/8`
+                        : "UNAVAILABLE"}
                     </span>
                   </div>
                   <div
@@ -272,7 +284,7 @@ export default function AgentsPage() {
                   </div>
                 </div>
 
-                {/* Numeraethe type + telemetry footer */}
+                {/* Numeraethe type + runtime evidence footer */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", letterSpacing: "0.12em", color: "var(--text-muted)", textTransform: "uppercase" }}>
