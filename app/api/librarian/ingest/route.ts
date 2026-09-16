@@ -28,16 +28,69 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No document provided.' }, { status: 400 });
     }
 
-    // 3. Triage
-    const { severity, quote, checkoutTier } = determineTier(file.size);
-    const documentId = `doc_${user.id}_${Date.now()}`;
+    const purpose =
+      formData.get('purpose') === 'workspace' ? 'workspace' : 'audit';
 
-    // 4. Extract text → embed
+    if (purpose === 'workspace') {
+      const mime = file.type || '';
+      const supported =
+        mime.startsWith('text/') ||
+        mime === 'application/json';
+
+      if (!supported) {
+        return NextResponse.json(
+          {
+            error:
+              'Workspace indexing currently supports text, Markdown, CSV, and JSON only.',
+          },
+          { status: 415 },
+        );
+      }
+    }
+
+    const documentId = `doc_${user.id}_${Date.now()}`;
+    const ingestedAt = new Date().toISOString();
+
+    // Extracted text is embedded externally; source file bytes are not retained here.
     const text = await extractText(file);
     const vector = await embedText(`filename: ${file.name}\n\n${text}`);
 
-    // 5. Upsert to mirrornode-vault under the librarian namespace
     const index = getPinecone().Index(PINECONE_INDEX);
+
+    if (purpose === 'workspace') {
+      await index.namespace(NS.librarian).upsert({
+        records: [
+          {
+            id: documentId,
+            values: vector,
+            metadata: {
+              owner_id: user.id,
+              filename: file.name,
+              mime_type: file.type || 'application/octet-stream',
+              bytes: file.size,
+              source: 'operator-workspace',
+              purpose: 'workspace',
+              ingested_at: ingestedAt,
+            },
+          },
+        ],
+      });
+
+      return NextResponse.json({
+        success: true,
+        mode: 'workspace',
+        documentId,
+        filename: file.name,
+        bytes: file.size,
+        ingestedAt,
+        message:
+          'Extracted text was indexed for user-scoped retrieval. Original file bytes were not retained by this slice.',
+      });
+    }
+
+    // Existing Librarian → paid audit behavior remains unchanged.
+    const { severity, quote, checkoutTier } = determineTier(file.size);
+
     await index.namespace(NS.librarian).upsert({
       records: [
         {
@@ -54,13 +107,13 @@ export async function POST(req: Request) {
             quote,
             checkout_tier: checkoutTier,
             source: 'librarian',
-            ingested_at: new Date().toISOString(),
+            purpose: 'audit',
+            ingested_at: ingestedAt,
           },
         },
       ],
     });
 
-    // 6. Return triage result
     return NextResponse.json({
       success: true,
       documentId,

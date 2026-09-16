@@ -30,7 +30,7 @@ const lanes = [
     title: "Librarian",
     description:
       "Knowledge and document-oriented working surface for material that belongs inside MIRRORNODE.",
-    href: "/librarian",
+    href: "/workspace/files",
     action: "Open librarian",
   },
   {
