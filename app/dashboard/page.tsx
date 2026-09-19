@@ -1,5 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { IBM_Plex_Sans, IBM_Plex_Mono, Newsreader } from "next/font/google";
+import { SnapshotTime } from "./_components/SnapshotTime";
+import styles from "./workspace.module.css";
+
+const sans = IBM_Plex_Sans({ weight: ["400", "500", "600"], subsets: ["latin"], variable: "--hud-sans", display: "swap" });
+const mono = IBM_Plex_Mono({ weight: ["400", "500"], subsets: ["latin"], variable: "--hud-mono", display: "swap" });
+const display = Newsreader({ subsets: ["latin"], variable: "--hud-display", display: "swap" });
+import { dockets } from "@/lib/operator-docket/dockets";
+import { OperatorDocketCard } from "./_components/OperatorDocketCard";
+
+// Evaluate evidence age at request time, never freeze readiness into a build.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Operator Workspace — MIRRORNODE",
@@ -50,92 +62,77 @@ const buildTargets = [
   "Operator legal and administrative workspace",
 ];
 
+// Server request clock, isolated from component rendering; force-dynamic prevents caching.
+function requestTime() {
+  return Date.now();
+}
+
 export default function Dashboard() {
+  const now = requestTime();
   return (
-    <main className="min-h-screen bg-[var(--background)] text-[var(--text)]">
-      <nav className="flex items-center justify-between border-b border-[var(--border)] px-6 py-4">
-        <Link
-          href="/"
-          className="text-sm font-bold tracking-widest text-[var(--accent)] hover:opacity-80"
-        >
-          [ MIRRORNODE ]
-        </Link>
-
-        <span className="text-xs tracking-widest text-[var(--text-muted)]">
-          OPERATOR WORKSPACE
-        </span>
-      </nav>
-
-      <section className="mx-auto max-w-6xl px-6 py-12">
-        <p className="mb-3 text-xs tracking-[0.22em] text-[var(--text-muted)]">
-          WORKING SURFACE · EVIDENCE BOUNDED
-        </p>
-
-        <h1 className="max-w-4xl text-4xl font-semibold tracking-tight md:text-5xl">
-          Work from what the system can actually establish.
-        </h1>
-
-        <p className="mt-5 max-w-3xl text-base leading-7 text-[var(--text-muted)]">
-          This workspace is the operating entry point for MIRRORNODE. It does
-          not manufacture uptime, task counts, coherence scores, or other live
-          state. Runtime claims belong to explicit evidence surfaces.
-        </p>
-      </section>
-
-      <section className="mx-auto grid max-w-6xl gap-4 px-6 pb-10 md:grid-cols-2">
-        {lanes.map((lane) => (
-          <article
-            key={lane.title}
-            className="flex min-h-56 flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6"
-          >
-            <h2 className="text-xl font-semibold">{lane.title}</h2>
-
-            <p className="mt-3 flex-1 leading-7 text-[var(--text-muted)]">
-              {lane.description}
-            </p>
-
-            <Link
-              href={lane.href}
-              className="mt-6 text-sm font-semibold tracking-wide text-[var(--accent)] hover:opacity-80"
-            >
-              {lane.action} →
-            </Link>
-          </article>
-        ))}
-      </section>
-
-      <section className="mx-auto max-w-6xl px-6 pb-16">
-        <div className="rounded-2xl border border-[var(--border)] p-6">
-          <p className="text-xs tracking-[0.2em] text-[var(--text-muted)]">
-            BUILD DIRECTION
-          </p>
-
-          <h2 className="mt-3 text-2xl font-semibold">
-            One workspace, progressively connected.
-          </h2>
-
-          <p className="mt-3 max-w-3xl leading-7 text-[var(--text-muted)]">
-            These are implementation targets, not claims that the capabilities
-            are complete. Each becomes active only when its underlying state,
-            authority, and evidence boundary is wired.
-          </p>
-
-          <div className="mt-6 grid gap-3 md:grid-cols-2">
-            {buildTargets.map((target) => (
-              <div
-                key={target}
-                className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm"
-              >
-                {target}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <footer className="border-t border-[var(--border)] px-6 py-5 text-xs text-[var(--text-muted)]">
-        MIRRORNODE · Operator workspace · No inferred live-state claims
-      </footer>
-    </main>
+    <div className={`${styles.workspace} ${sans.variable} ${mono.variable} ${display.variable}`}>
+      <a href="#workspace-main" className={styles.skip}>Skip to workspace</a>
+      <header className={styles.header}>
+        <Link href="/" prefetch={false} className={styles.mark}>[ MIRRORNODE ]</Link>
+        <span className={styles.eyebrow}>Working surface · evidence bounded</span>
+        <span className={styles.seal}>Presentation is not authority</span>
+      </header>
+      <div className={styles.layout}>
+        <nav aria-label="Workspace surfaces" className={styles.rail}>
+          <p className={styles.eyebrow}>Surfaces</p>
+          <a href="#docket" className={styles.selected}>Operator docket</a>
+          {lanes.map(lane => <Link prefetch={false} key={lane.title} href={lane.href}>{lane.title}</Link>)}
+          <a href="#prospect-radar">Prospect Radar <span>HOLD · docket only</span></a>
+          <p className={styles.railNote}>Open a surface to inspect its evidence. Placement does not establish readiness.</p>
+        </nav>
+        <main id="workspace-main" className={styles.main}>
+          <section className={styles.intro} aria-labelledby="workspace-heading">
+            <p className={styles.eyebrow}>Operator workspace</p>
+            <h1 id="workspace-heading">Work from what the system can actually establish.</h1>
+            <p>Declared attention, bounded evidence, explicit next steps.</p>
+          </section>
+          <section id="docket" aria-labelledby="operator-docket-heading" className={styles.docket}>
+            <div className={styles.sectionHeading}><h2 id="operator-docket-heading">Operator docket</h2><span className={styles.eyebrow}>Curated attention</span></div>
+            <p className={styles.description}>Commercial evidence, Radar review, then the frozen workspace reference. Opening a card records no decision.</p>
+            <div className={styles.cards}>
+              {dockets.map(docket => <OperatorDocketCard key={docket.id} docket={docket} now={now} />)}
+            </div>
+          </section>
+          <aside aria-labelledby="bound-heading" className={styles.bound}>
+            <p className={styles.eyebrow}>Operating bound</p>
+            <h2 id="bound-heading">The HUD points.<br />It does not authorize.</h2>
+            <p>No inferred uptime, task counts, coherence scores, or live state. Runtime claims belong to explicit evidence surfaces.</p>
+            <dl>
+              <div><dt>Snapshot</dt><dd><SnapshotTime iso={new Date(now).toISOString()} /></dd></div>
+              <div><dt>Freshness</dt><dd>As of page load. Reload before a decision; this page does not poll.</dd></div>
+              <div><dt>Curator</dt><dd>Codex, from the Operator’s requested lanes.</dd></div>
+              <div><dt>Record path</dt><dd><code>docs/operator/</code><span>Repository documents; decisions and receipts remain separate.</span></dd></div>
+              <div><dt>Runtime verification</dt><dd><span className={styles.chip} data-state="UNKNOWN">UNKNOWN</span></dd></div>
+            </dl>
+            <p className={styles.boundFoot}>CURRENT describes a scoped receipt within its review interval. It does not establish runtime health or permission.</p>
+          </aside>
+          <section aria-labelledby="surfaces-heading" className={styles.surfaces}>
+            <div className={styles.sectionHeading}><h2 id="surfaces-heading">Evidence surfaces</h2><span className={styles.eyebrow}>Open to inspect</span></div>
+            <div className={styles.tiles}>
+              {lanes.map(lane => (
+                <article key={lane.title} className={styles.tile}>
+                  <h3>{lane.title}</h3>
+                  <p>{lane.description}</p>
+                  <div className={styles.empty}>No runtime observation loaded here.</div>
+                  <Link prefetch={false} href={lane.href}>{lane.action} <span aria-hidden="true">↗</span></Link>
+                </article>
+              ))}
+            </div>
+          </section>
+          <section className={styles.direction} aria-labelledby="direction-heading">
+            <p className={styles.eyebrow}>Build direction · targets only</p>
+            <h2 id="direction-heading">One workspace, progressively connected.</h2>
+            <p>Implementation targets become active only when their underlying state, authority, and evidence boundary is wired.</p>
+            <ul>{buildTargets.map(target => <li key={target}>{target}</li>)}</ul>
+          </section>
+        </main>
+      </div>
+      <footer className={styles.footer}>MIRRORNODE · Operator workspace · No inferred live-state claims</footer>
+    </div>
   );
 }
