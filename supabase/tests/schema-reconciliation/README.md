@@ -60,21 +60,16 @@ DATABASE_URL="$DISPOSABLE_DATABASE_URL" \
   supabase/tests/schema-reconciliation/run.sh
 ```
 
-`run.sh` resolves the reconciliation migration to an absolute filesystem path
-and passes that exact path to every success-path SQL fixture as:
+`run.sh` resolves the exact checked-in migration path and verifies it has
+one outer `BEGIN` and one outer `COMMIT`. For success fixtures only, it
+derives a temporary copy without those two wrapper statements and passes that
+absolute temporary path as `migration_file`. The fixtures include it with
+`\i :migration_file` inside their own transactions, so their final
+`ROLLBACK` actually restores the disposable table.
 
-```bash
--v migration_file="$absolute_migration_path"
-```
-
-The success-path fixtures include the migration through:
-
-```sql
-\i :migration_file
-```
-
-They do not depend on the shell working directory or on repository-relative
-include resolution.
+Expected-failure fixtures invoke the original checked-in migration in a
+separate `psql` process. The temporary body is removed on runner exit.
+The runner does not depend on the shell working directory or relative includes.
 
 ## Expected-success cases
 
