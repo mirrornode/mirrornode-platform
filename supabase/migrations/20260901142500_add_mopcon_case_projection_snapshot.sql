@@ -15,6 +15,12 @@
 
 begin;
 
+-- Keep the bounded terminal branch ordered without sorting the historical ledger.
+create index if not exists guest_audit_purchases_mopcon_terminal_order_idx
+  on public.guest_audit_purchases (created_at desc nulls last, id desc)
+  where flow = 'osiris-audit-v1'
+    and fulfillment_status in ('delivered', 'refunded');
+
 create or replace function public.mopcon_case_projection()
 returns table (
   id uuid,
