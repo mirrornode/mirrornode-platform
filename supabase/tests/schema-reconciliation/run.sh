@@ -49,6 +49,209 @@ if [[ ! -f "${migration}" ]]; then
   exit 66
 fi
 
+# The checked-in migration owns BEGIN/COMMIT. Success fixtures own their own
+# transaction and must include only the migration body so their ROLLBACK works.
+# Failure fixtures below still invoke the exact checked-in migration file.
+if [[ "$(grep -Ec '^[[:space:]]*begin;[[:space:]]* {
+  local file="$1"
+
+  echo "Running success-path test: $(basename "${file}")"
+
+  psql "${DATABASE_URL}" \
+    -X \
+    -v ON_ERROR_STOP=1 \
+    -v migration_file="${migration_body}" \
+    -f "${file}"
+}
+
+run_success_test "${test_dir}/001_target_schema_contract.sql"
+run_success_test "${test_dir}/002_legacy_to_target_upgrade.sql"
+run_success_test "${test_dir}/003_target_to_target_noop.sql"
+run_success_test "${test_dir}/005_data_preservation_and_rerun.sql"
+
+echo "Preparing persistent incompatible-shape fixture."
+
+psql "${DATABASE_URL}" \
+  -X \
+  -v ON_ERROR_STOP=1 \
+  -f "${test_dir}/004_incompatible_state_rejection.sql"
+
+expected_output="$(
+  psql "${DATABASE_URL}" \
+    -X \
+    -v ON_ERROR_STOP=1 \
+    -v VERBOSITY=verbose \
+    -f "${migration}" \
+    2>&1
+)" && {
+  echo "Expected incompatible primary-key fixture to reject the migration." >&2
+  exit 1
+}
+
+if [[ "${expected_output}" != *"guest_audit_purchases UUID identity reconciliation aborted: primary key is neither id nor stripe_session_id"* ]]; then
+  echo "Expected reconciliation abort message was not observed." >&2
+  printf '%s\n' "${expected_output}" >&2
+  exit 1
+fi
+
+if ! grep -Eq 'ERROR:[[:space:]]+P0001:' <<<"${expected_output}"; then
+  echo "Expected reconciliation SQLSTATE P0001 was not observed in verbose psql output." >&2
+  printf '%s\n' "${expected_output}" >&2
+  exit 1
+fi
+
+echo "Verifying incompatible fixture remained unchanged after expected failure."
+
+psql "${DATABASE_URL}" \
+  -X \
+  -v ON_ERROR_STOP=1 \
+  -f "${test_dir}/004_incompatible_state_assert_unchanged.sql"
+
+echo "Preparing persistent inbound-foreign-key fixture."
+
+psql "${DATABASE_URL}" \
+  -X \
+  -v ON_ERROR_STOP=1 \
+  -f "${test_dir}/006_inbound_foreign_key_rejection.sql"
+
+expected_output="$(
+  psql "${DATABASE_URL}" \
+    -X \
+    -v ON_ERROR_STOP=1 \
+    -v VERBOSITY=verbose \
+    -f "${migration}" \
+    2>&1
+)" && {
+  echo "Expected inbound-foreign-key fixture to reject the migration." >&2
+  exit 1
+}
+
+if [[ "${expected_output}" != *"guest_audit_purchases UUID identity reconciliation aborted: inbound foreign keys require a separately reviewed migration"* ]]; then
+  echo "Expected inbound-foreign-key reconciliation abort message was not observed." >&2
+  printf '%s\n' "${expected_output}" >&2
+  exit 1
+fi
+
+if ! grep -Eq 'ERROR:[[:space:]]+P0001:' <<<"${expected_output}"; then
+  echo "Expected inbound-foreign-key SQLSTATE P0001 was not observed in verbose psql output." >&2
+  printf '%s\n' "${expected_output}" >&2
+  exit 1
+fi
+
+echo "Verifying inbound-foreign-key fixture remained unchanged after expected failure."
+
+psql "${DATABASE_URL}" \
+  -X \
+  -v ON_ERROR_STOP=1 \
+  -f "${test_dir}/006_inbound_foreign_key_assert_unchanged.sql"
+
+echo "Schema reconciliation tests passed."
+ "${migration}")" != 1 ||
+      "$(grep -Ec '^[[:space:]]*commit;[[:space:]]* {
+  local file="$1"
+
+  echo "Running success-path test: $(basename "${file}")"
+
+  psql "${DATABASE_URL}" \
+    -X \
+    -v ON_ERROR_STOP=1 \
+    -v migration_file="${migration}" \
+    -f "${file}"
+}
+
+run_success_test "${test_dir}/001_target_schema_contract.sql"
+run_success_test "${test_dir}/002_legacy_to_target_upgrade.sql"
+run_success_test "${test_dir}/003_target_to_target_noop.sql"
+run_success_test "${test_dir}/005_data_preservation_and_rerun.sql"
+
+echo "Preparing persistent incompatible-shape fixture."
+
+psql "${DATABASE_URL}" \
+  -X \
+  -v ON_ERROR_STOP=1 \
+  -f "${test_dir}/004_incompatible_state_rejection.sql"
+
+expected_output="$(
+  psql "${DATABASE_URL}" \
+    -X \
+    -v ON_ERROR_STOP=1 \
+    -v VERBOSITY=verbose \
+    -f "${migration}" \
+    2>&1
+)" && {
+  echo "Expected incompatible primary-key fixture to reject the migration." >&2
+  exit 1
+}
+
+if [[ "${expected_output}" != *"guest_audit_purchases UUID identity reconciliation aborted: primary key is neither id nor stripe_session_id"* ]]; then
+  echo "Expected reconciliation abort message was not observed." >&2
+  printf '%s\n' "${expected_output}" >&2
+  exit 1
+fi
+
+if ! grep -Eq 'ERROR:[[:space:]]+P0001:' <<<"${expected_output}"; then
+  echo "Expected reconciliation SQLSTATE P0001 was not observed in verbose psql output." >&2
+  printf '%s\n' "${expected_output}" >&2
+  exit 1
+fi
+
+echo "Verifying incompatible fixture remained unchanged after expected failure."
+
+psql "${DATABASE_URL}" \
+  -X \
+  -v ON_ERROR_STOP=1 \
+  -f "${test_dir}/004_incompatible_state_assert_unchanged.sql"
+
+echo "Preparing persistent inbound-foreign-key fixture."
+
+psql "${DATABASE_URL}" \
+  -X \
+  -v ON_ERROR_STOP=1 \
+  -f "${test_dir}/006_inbound_foreign_key_rejection.sql"
+
+expected_output="$(
+  psql "${DATABASE_URL}" \
+    -X \
+    -v ON_ERROR_STOP=1 \
+    -v VERBOSITY=verbose \
+    -f "${migration}" \
+    2>&1
+)" && {
+  echo "Expected inbound-foreign-key fixture to reject the migration." >&2
+  exit 1
+}
+
+if [[ "${expected_output}" != *"guest_audit_purchases UUID identity reconciliation aborted: inbound foreign keys require a separately reviewed migration"* ]]; then
+  echo "Expected inbound-foreign-key reconciliation abort message was not observed." >&2
+  printf '%s\n' "${expected_output}" >&2
+  exit 1
+fi
+
+if ! grep -Eq 'ERROR:[[:space:]]+P0001:' <<<"${expected_output}"; then
+  echo "Expected inbound-foreign-key SQLSTATE P0001 was not observed in verbose psql output." >&2
+  printf '%s\n' "${expected_output}" >&2
+  exit 1
+fi
+
+echo "Verifying inbound-foreign-key fixture remained unchanged after expected failure."
+
+psql "${DATABASE_URL}" \
+  -X \
+  -v ON_ERROR_STOP=1 \
+  -f "${test_dir}/006_inbound_foreign_key_assert_unchanged.sql"
+
+echo "Schema reconciliation tests passed."
+ "${migration}")" != 1 ]]; then
+  echo "Migration transaction wrapper changed; refuse to derive test body." >&2
+  exit 66
+fi
+
+migration_body="$(mktemp)"
+trap 'rm -f "${migration_body}"' EXIT
+sed -e '/^[[:space:]]*begin;[[:space:]]*$/d' \
+    -e '/^[[:space:]]*commit;[[:space:]]*$/d' \
+    "${migration}" > "${migration_body}"
+
 run_success_test() {
   local file="$1"
 
