@@ -35,40 +35,28 @@ stable
 security invoker
 set search_path = pg_catalog, public
 as $$
-  with snapshot_rows as materialized (
+  with actionable as (
     select
-      p.id,
-      p.customer_email,
-      p.flow,
-      p.status,
-      p.fulfillment_status,
-      p.created_at,
-      p.updated_at,
-      p.intake_submitted_at,
-      p.operator_reviewed_at,
-      p.fulfillment_started_at,
-      p.delivered_at,
+      p.id, p.customer_email, p.flow, p.status, p.fulfillment_status,
+      p.created_at, p.updated_at, p.intake_submitted_at,
+      p.operator_reviewed_at, p.fulfillment_started_at, p.delivered_at,
       p.intake_artifact_links
     from public.guest_audit_purchases as p
     where p.flow = 'osiris-audit-v1'
-  ),
-  actionable as (
-    select *
-    from snapshot_rows
-    where fulfillment_status = any (
-      array[
-        'intake_pending',
-        'intake_complete',
-        'fulfillment_started',
-        'paused'
-      ]::text[]
-    )
+      and p.fulfillment_status in (
+        'intake_pending', 'intake_complete', 'fulfillment_started', 'paused'
+      )
   ),
   terminal as (
-    select *
-    from snapshot_rows
-    where fulfillment_status = any (array['delivered', 'refunded']::text[])
-    order by created_at desc nulls last, id desc
+    select
+      p.id, p.customer_email, p.flow, p.status, p.fulfillment_status,
+      p.created_at, p.updated_at, p.intake_submitted_at,
+      p.operator_reviewed_at, p.fulfillment_started_at, p.delivered_at,
+      p.intake_artifact_links
+    from public.guest_audit_purchases as p
+    where p.flow = 'osiris-audit-v1'
+      and p.fulfillment_status in ('delivered', 'refunded')
+    order by p.created_at desc nulls last, p.id desc
     limit 100
   )
   select * from actionable
