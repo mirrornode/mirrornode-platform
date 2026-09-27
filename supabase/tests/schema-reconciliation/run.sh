@@ -156,4 +156,75 @@ psql "${DATABASE_URL}" \
   -v ON_ERROR_STOP=1 \
   -f "${test_dir}/006_inbound_foreign_key_assert_unchanged.sql"
 
+snapshot_type_fixture() {
+  psql "${DATABASE_URL}" -X -A -t -v ON_ERROR_STOP=1 <<'SQL'
+select jsonb_build_object(
+  'columns', (
+    select jsonb_agg(jsonb_build_array(
+      a.attname, a.atttypid, a.atttypmod, a.attnotnull,
+      pg_catalog.pg_get_expr(d.adbin, d.adrelid)
+    ) order by a.attnum)
+    from pg_catalog.pg_attribute a
+    left join pg_catalog.pg_attrdef d
+      on d.adrelid = a.attrelid and d.adnum = a.attnum
+    where a.attrelid = 'public.guest_audit_purchases'::regclass
+      and a.attnum > 0 and not a.attisdropped
+  ),
+  'constraints', (
+    select jsonb_agg(jsonb_build_array(
+      conname, pg_catalog.pg_get_constraintdef(oid)
+    ) order by conname)
+    from pg_catalog.pg_constraint
+    where conrelid = 'public.guest_audit_purchases'::regclass
+  ),
+  'rows', (
+    select jsonb_agg(to_jsonb(t) order by stripe_session_id)
+    from public.guest_audit_purchases t
+  )
+);
+SQL
+}
+
+for legacy in false true; do
+  echo "Testing incompatible session-id type (legacy=${legacy})."
+  psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 -v legacy="${legacy}" <<'SQL'
+begin;
+drop table if exists public.guest_audit_purchases;
+\if :legacy
+create table public.guest_audit_purchases (
+  stripe_session_id integer primary key
+);
+\else
+create table public.guest_audit_purchases (
+  id uuid primary key default gen_random_uuid(),
+  stripe_session_id integer not null unique
+);
+\endif
+insert into public.guest_audit_purchases (stripe_session_id) values (123);
+commit;
+SQL
+  before_type_fixture="$(snapshot_type_fixture)"
+  if expected_output="$(
+    psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
+      -v VERBOSITY=verbose -f "${migration}" 2>&1
+  )"; then
+    echo "FAIL: migration accepted an integer session identifier." >&2
+    exit 1
+  fi
+  if [[ "${expected_output}" != *"stripe_session_id must be text"* ]] ||
+      ! grep -Eq 'ERROR:[[:space:]]+P0001:' <<<"${expected_output}"; then
+    printf '%s\n' "${expected_output}" >&2
+    exit 1
+  fi
+  after_type_fixture="$(snapshot_type_fixture)"
+  if [[ "${before_type_fixture}" != "${after_type_fixture}" ]]; then
+    echo "FAIL: rejected migration changed the type fixture." >&2
+    exit 1
+  fi
+  echo "PASS: incompatible type rejected; columns, constraints and rows preserved."
+done
+
+psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
+  -c 'drop table public.guest_audit_purchases;'
+
 echo "Schema reconciliation tests passed."

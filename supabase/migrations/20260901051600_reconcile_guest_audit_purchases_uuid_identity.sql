@@ -131,6 +131,23 @@ begin
         'guest_audit_purchases UUID identity reconciliation aborted: stripe_session_id column is absent';
   end if;
 
+  -- Both supported shapes require the exact built-in text type.
+  -- Reject incompatible types without converting payment identifiers.
+  if not exists (
+    select 1
+    from pg_catalog.pg_attribute a
+    where a.attrelid = v_table
+      and a.attname = 'stripe_session_id'
+      and a.attnum > 0
+      and not a.attisdropped
+      and a.atttypid = 'pg_catalog.text'::pg_catalog.regtype
+  ) then
+    raise exception using
+      errcode = 'P0001',
+      message =
+        'guest_audit_purchases UUID identity reconciliation aborted: stripe_session_id must be text';
+  end if;
+
   select c.conname,
          array_agg(a.attname::text order by key_columns.ordinality)
   into v_pk_name, v_pk_columns
