@@ -6,6 +6,10 @@
 
 This document records working production surfaces. It is an operational inventory, not a governance record and not a source of runtime authority.
 
+## Release-control note (2026-09-06)
+
+The production verification date above remains historical. PR #54 code and database proof do not establish a new production rollout. Automatic deployment is frozen for the gated platform source; target migration and Operator configuration still require verification and separate release approval. See [deployment gates and release sequence](DEPLOYMENT_GATES_AND_RELEASE_SEQUENCE.md). Do not relabel the controlled-start endpoint as production-active merely because its PR is merged.
+
 ## Customer-facing surfaces
 
 | Surface | URL | Current role | Status |

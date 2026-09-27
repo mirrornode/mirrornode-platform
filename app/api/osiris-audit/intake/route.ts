@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
 import { stripeEnv } from '@/lib/env/stripe';
+import { OSIRIS_AUDIT_V1_CHANNEL_AUTHORIZATION_TEXT } from '@/lib/osiris-audit/authorization';
 import { osirisAuditIntakeSchema } from '@/lib/osiris-audit/intake';
 
 export const dynamic = 'force-dynamic';
@@ -77,9 +78,6 @@ export async function POST(req: NextRequest) {
   );
   const now = new Date().toISOString();
 
-  // Preserve payment evidence even when the success redirect wins the race
-  // against Stripe's webhook. Fulfillment columns are intentionally omitted
-  // so database defaults and any later Operator state are not overwritten.
   const { error: paymentError } = await supabase
     .from(PURCHASE_TABLE)
     .upsert(
@@ -105,8 +103,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // The database predicate makes duplicate or out-of-order submissions
-  // deterministic: only an intake_pending row with no prior submission moves.
   const { data: updatedRows, error: intakeError } = await supabase
     .from(PURCHASE_TABLE)
     .update({
@@ -116,6 +112,9 @@ export async function POST(req: NextRequest) {
       intake_artifact_links: artifactLinks,
       intake_additional_context: additionalContext || null,
       intake_submitted_at: now,
+      intake_authorization_confirmed_at: now,
+      intake_channel_authorization_text:
+        OSIRIS_AUDIT_V1_CHANNEL_AUTHORIZATION_TEXT,
       fulfillment_status: 'intake_complete',
       updated_at: now,
     })

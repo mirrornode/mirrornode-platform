@@ -79,6 +79,12 @@ Then open `http://localhost:3000`.
 
 - [`docs/operations/ACTIVE_PRODUCTION_SURFACES.md`](docs/operations/ACTIVE_PRODUCTION_SURFACES.md) — verified production and commercial surfaces
 
+- [`docs/release-boundaries/OSIRIS_AUDIT_V1_OPERATOR_FULFILLMENT_RUNBOOK.md`](docs/release-boundaries/OSIRIS_AUDIT_V1_OPERATOR_FULFILLMENT_RUNBOOK.md) — controlled start, receipt handling, legacy authorization, and rollout prerequisites
+
+- [`docs/operations/DEPLOYMENT_GATES_AND_RELEASE_SEQUENCE.md`](docs/operations/DEPLOYMENT_GATES_AND_RELEASE_SEQUENCE.md) — release freeze, verified wiring, and database-first release plan
+
+Code availability on main is separate from production deployment; see the release gates before promoting changes.
+
 ## Project
 
 MIRRORNODE platform repository maintained by the MIRRORNODE project.

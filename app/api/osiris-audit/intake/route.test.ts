@@ -35,6 +35,7 @@ vi.mock('@/lib/env/stripe', () => ({
 }));
 
 import { POST } from './route';
+import { OSIRIS_AUDIT_V1_CHANNEL_AUTHORIZATION_TEXT } from '@/lib/osiris-audit/authorization';
 
 const validBody = {
   sessionId: 'cs_test_paid',
@@ -43,6 +44,7 @@ const validBody = {
   concerns: 'Repository drift and unclear runtime boundaries.',
   artifactLinks: ['https://example.com/repository'],
   additionalContext: 'Manual fulfillment is expected.',
+  authorizationConfirmed: true,
 };
 
 function request(body: unknown) {
@@ -114,6 +116,15 @@ describe('POST /api/osiris-audit/intake', () => {
           (_, index) => `https://example.com/artifact-${index}`
         ),
       }) as never
+    );
+
+    expect(res.status).toBe(400);
+    expect(mocks.retrieveSession).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when authorization is not confirmed', async () => {
+    const res = await POST(
+      request({ ...validBody, authorizationConfirmed: false }) as never
     );
 
     expect(res.status).toBe(400);
@@ -210,6 +221,9 @@ describe('POST /api/osiris-audit/intake', () => {
         intake_system_summary: validBody.systemSummary,
         intake_primary_goal: validBody.primaryGoal,
         intake_artifact_links: validBody.artifactLinks,
+        intake_authorization_confirmed_at: expect.any(String),
+        intake_channel_authorization_text:
+          OSIRIS_AUDIT_V1_CHANNEL_AUTHORIZATION_TEXT,
         fulfillment_status: 'intake_complete',
       })
     );
