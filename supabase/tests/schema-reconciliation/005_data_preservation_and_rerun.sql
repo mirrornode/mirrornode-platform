@@ -72,6 +72,17 @@ from public.guest_audit_purchases;
 
 do $$
 begin
+  -- EXCEPT below detects changed or added rows; counts also detect row loss.
+  if (select count(*) from public.guest_audit_purchases)
+     <> (select count(*) from legacy_snapshot) then
+    raise exception 'data-preservation failed: row count differs from legacy snapshot';
+  end if;
+
+  if (select count(*) from public.guest_audit_purchases)
+     <> (select count(*) from first_upgrade_snapshot) then
+    raise exception 'rerun failed: row count changed on target-state rerun';
+  end if;
+
   if exists (
     (
       select

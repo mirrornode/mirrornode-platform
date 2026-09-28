@@ -93,6 +93,14 @@ duplicate session IDs.
 
 ## Replay gates
 
+Pristine repository replay has a separate bootstrap prerequisite:
+`20260813212729_harden_guest_audit_purchase_privileges.sql` alters
+`public.set_guest_audit_purchases_updated_at()`, which no repository migration
+creates. See `docs/operations/DEPLOYMENT_GATES_AND_RELEASE_SEQUENCE.md`.
+Tests starting from a documented legacy prerequisite state establish bounded
+compatibility, not pristine bootstrap. Repair of that prerequisite is separate
+from this identity reconciliation; no production migration is authorized here.
+
 The Schema Baseline Reconciliation PR may merge only after automated tests
 demonstrate:
 
