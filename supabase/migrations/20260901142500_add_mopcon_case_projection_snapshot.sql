@@ -15,6 +15,15 @@
 
 begin;
 
+-- Let sparse actionable reads avoid scanning unrelated and terminal history.
+-- All actionable rows are still returned; this does not bound response size.
+create index if not exists guest_audit_purchases_mopcon_actionable_order_idx
+  on public.guest_audit_purchases (created_at desc nulls last, id desc)
+  where flow = 'osiris-audit-v1'
+    and fulfillment_status in (
+      'intake_pending', 'intake_complete', 'fulfillment_started', 'paused'
+    );
+
 -- Keep the bounded terminal branch ordered without sorting the historical ledger.
 create index if not exists guest_audit_purchases_mopcon_terminal_order_idx
   on public.guest_audit_purchases (created_at desc nulls last, id desc)
