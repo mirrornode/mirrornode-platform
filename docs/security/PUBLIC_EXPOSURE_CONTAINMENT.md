@@ -16,7 +16,8 @@ Keep upstream error bodies private; return a bounded public error response.
 
 Python caches are removed from the tracked tree and ignored. One stale cache
 contained a development authentication fallback absent from the fail-closed
-source. Do not restore cached bytecode or accept a published development default.
+source. The Python route now rejects that retired default even if explicitly configured,
+using its digest without reproducing the credential. Do not restore cached bytecode.
 Review deployed configuration separately; removal from source does not revoke a
 credential or prove the cache was never executed. If that default was accepted,
 replace it through the deployment's secret-management process and review access.

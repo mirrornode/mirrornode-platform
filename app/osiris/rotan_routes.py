@@ -6,10 +6,14 @@ from supabase import create_client
 import os
 
 router = APIRouter(prefix="/rotan-q")
-supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
 ROTAN_DEV_KEY = os.environ.get("ROTAN_DEV_KEY")
 if not ROTAN_DEV_KEY:
     raise RuntimeError("ROTAN_DEV_KEY must be set")
+# Never accept the development default published in historical bytecode.
+if hashlib.sha256(ROTAN_DEV_KEY.encode()).hexdigest() == "81e2693f4722a2035689fa4052f3cf6e73cc93adcfbff031608c2d75f2d57a55":
+    raise RuntimeError("ROTAN_DEV_KEY must not use the retired development default")
+
+supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
 
 def verify_bearer(authorization: str = Header(...)):
     scheme, _, token = authorization.partition(" ")
