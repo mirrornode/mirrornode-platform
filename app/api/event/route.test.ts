@@ -1,64 +1,35 @@
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("@/lib/registry", () => ({
-  registry: {
-    getStatus: () => ({
-      status: "ok",
-      lastSync: "2026-01-01T00:00:00.000Z",
-    }),
-  },
-}));
-
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST } from "./route";
 
-describe("POST /api/event", () => {
-  it("returns 400 for invalid payload shape", async () => {
-    const req = new Request("http://localhost/api/event", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ node: "", type: "operator_action", payload: {} }),
-    });
+const handler: (request: Request) => Promise<Response> = POST;
 
-    const res = await POST(req as never);
-    expect(res.status).toBe(400);
-  });
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
 
-  it("acknowledges sync_request events", async () => {
-    const req = new Request("http://localhost/api/event", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        node: "osiris",
-        type: "operator_action",
-        payload: { action: "sync_request" },
-      }),
-    });
-
-    const res = await POST(req as never);
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body.received).toBe(true);
-    expect(body.result).toBe("sync_acknowledged");
-  });
-
-  it("returns generic ack for non-operator events", async () => {
-    const req = new Request("http://localhost/api/event", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        node: "hermes",
-        type: "health_ping",
-        payload: { uptime: 123 },
-      }),
-    });
-
-    const res = await POST(req as never);
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body.received).toBe(true);
-    expect(body.type).toBe("health_ping");
-    expect(body.result).toBeUndefined();
+describe("POST /api/event containment", () => {
+  it.each([
+    ["anonymous", undefined, JSON.stringify({ prompt: "private prompt", node: "osiris", type: "operator_action", payload: { action: "sync_request" } })],
+    ["claimed bearer", "Bearer untrusted", "private malformed body"],
+    ["empty request", undefined, ""],
+  ])("rejects %s without executing or disclosing input", async (_, authorization, body) => {
+    vi.stubEnv("AGENT_BASE_URL", "https://upstream.example.test");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const headers = new Headers({ "Content-Type": "application/json" });
+    if (authorization) headers.set("Authorization", authorization);
+    const request = new Request("https://example.test/api/event", { method: "POST", headers, body });
+    const response = await handler(request);
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toEqual({ error: "Event submission is temporarily unavailable." });
+    expect(request.bodyUsed).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(log).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
   });
 });

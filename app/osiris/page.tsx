@@ -4,9 +4,8 @@
  * OSIRIS — Node 4 Live State Page
  * /osiris
  *
- * Fetches /api/state/osiris on load and on SYNC trigger.
- * Displays raw JSON state + sends POST /api/event on button press.
- * This page IS the visible proof that the MIRRORNODE ↔ OSIRIS link is real.
+ * Reads /api/state/osiris on load and refresh.
+ * Event submission is unavailable while its authorization boundary is unresolved.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -21,7 +20,6 @@ export default function OsirisPage() {
   const [state, setState]       = useState<OsirisState>(null);
   const [eventLog, setEventLog] = useState<string[]>([]);
   const [loading, setLoading]   = useState(false);
-  const [syncing, setSyncing]   = useState(false);
   const pollRef                 = useRef<number | null>(null);
 
   const log = useCallback((msg: string) => {
@@ -42,30 +40,6 @@ export default function OsirisPage() {
       setLoading(false);
     }
   }, [log]);
-
-  // ── Send SYNC event ────────────────────────────────────────────────────────
-  async function sendSync() {
-    setSyncing(true);
-    try {
-      const res = await fetch('/api/event', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          node:    'osiris',
-          type:    'operator_action',
-          payload: { action: 'sync_request' },
-        }),
-      });
-      const data = await res.json();
-      log(`[${timestamp()}] SYNC sent → result: ${data.result ?? 'ack'}`);
-      // Immediately refresh state after sync
-      await fetchState();
-    } catch (err) {
-      log(`[${timestamp()}] ERROR on sync: ${String(err)}`);
-    } finally {
-      setSyncing(false);
-    }
-  }
 
   // ── Mount: initial fetch + 10s poll ───────────────────────────────────────
   useEffect(() => {
@@ -113,13 +87,7 @@ export default function OsirisPage() {
         >
           {loading ? 'FETCHING…' : '↻ REFRESH'}
         </button>
-        <button
-          onClick={sendSync}
-          disabled={syncing}
-          style={{ ...styles.btn, ...styles.btnPrimary }}
-        >
-          {syncing ? 'SYNCING…' : '⚡ SYNC'}
-        </button>
+        <span role="status">Sync is temporarily unavailable.</span>
         <span style={styles.pollNote}>auto-poll every 10s</span>
       </section>
 
