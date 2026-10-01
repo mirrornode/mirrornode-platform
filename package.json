@@ -17,7 +17,7 @@
     "@stripe/stripe-js": "^9.7.0",
     "@supabase/supabase-js": "^2.106.2",
     "lucide-react": "^1.16.0",
-    "next": "^16.2.1",
+    "next": "^16.3.8",
     "openai": "^6.39.0",
     "pdf-parse": "^2.4.5",
     "react": "^19.2.4",
@@ -32,9 +32,9 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "^16.2.12",
+    "eslint-config-next": "^16.3.8",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.11"
   }
 }
