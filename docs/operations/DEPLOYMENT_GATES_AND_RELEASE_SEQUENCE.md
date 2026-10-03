@@ -8,6 +8,32 @@ Proposal → code review → merge approval → merge → database release appro
 
 A green build, merge permission, agent manifest, or public page never supplies the later approvals. The Operator remains the decision-maker. Sensitive operations need the applicable governance evaluation and attributable receipt. This document does not change CORE-HUB policy, agent capability, MOPCON scope, payment authority, or UUID reconciliation.
 
+## Historical bootstrap correction: bounded CLI evidence
+
+Local disposable observation, 2026-10-02: Supabase Go CLI 2.102.0 from the
+installed package was invoked with an explicit loopback database URL. A synthetic
+migration was applied, its SQL bytes were changed under the same version, and
+`migration up` was invoked again. Both calls exited 0; the second applied nothing.
+The stored row and recorded migration statements retained the original content.
+This establishes version-based skip behavior for this command/version and probe,
+not checksum validation or a hosted deployment receipt. The CLI wrapper's
+telemetry write was blocked; the underlying Go binary completed the probe.
+The local probe used debug mode because this CLI forces TLS on explicit URLs
+otherwise; its trace contains only disposable schema and synthetic data.
+
+Consequently, editing the historical guest-table creation migration repairs new
+repository replays; it does not retrofit an already-applied target. Do not reset,
+repair history, or force replay of old migrations to distribute this change.
+Before any separately authorized database release, verify the target's existing
+function/trigger definition and migration history read-only. If the prerequisite
+is missing or incompatible on an already-applied target, stop and prepare a
+separately reviewed forward migration. Existing-object preservation guarantees
+that bootstrap does not replace the named objects; it does not certify their
+security properties, timing or behavior. Full service-stack and hosted migration
+handling remain outside this local probe.
+
+Reference: [Supabase database migration workflow](https://supabase.com/docs/guides/deployment/database-migrations).
+
 ## Implemented containment
 
 | Path | Gate | Verification / limit |
