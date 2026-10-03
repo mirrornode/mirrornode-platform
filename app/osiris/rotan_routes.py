@@ -1,21 +1,25 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 from typing import Optional
-import hashlib, uuid, time
+import hashlib, hmac, uuid, time
 from supabase import create_client
 import os
 
 router = APIRouter(prefix="/rotan-q")
-supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
 ROTAN_DEV_KEY = os.environ.get("ROTAN_DEV_KEY")
 if not ROTAN_DEV_KEY:
     raise RuntimeError("ROTAN_DEV_KEY must be set")
+# Never accept the development default published in historical bytecode.
+if hashlib.sha256(ROTAN_DEV_KEY.encode()).hexdigest() == "81e2693f4722a2035689fa4052f3cf6e73cc93adcfbff031608c2d75f2d57a55":
+    raise RuntimeError("ROTAN_DEV_KEY must not use the retired development default")
+
+supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
 
 def verify_bearer(authorization: str = Header(...)):
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer":
         raise HTTPException(401, "Invalid auth scheme")
-    if token != ROTAN_DEV_KEY:
+    if not hmac.compare_digest(token.encode(), ROTAN_DEV_KEY.encode()):
         raise HTTPException(403, "Forbidden")
     return token
 

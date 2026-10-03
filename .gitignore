@@ -43,3 +43,7 @@ next-env.d.ts
 
 # Supabase local temp
 supabase/.temp/
+
+# Python bytecode is generated locally and must not be published
+__pycache__/
+*.py[cod]

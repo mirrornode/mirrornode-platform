@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     branches: [main]
@@ -33,11 +36,30 @@ jobs:
       - name: Run lint
         run: npm run lint
 
+  rotan-startup:
+    name: ci/rotan-startup
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout with historical regression fixture
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Verify Rotan startup guard without service calls
+        run: python -B -m unittest discover -s tests/python -p 'test_*.py' -v
+
   test:
     name: ci/test
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: lint
+    needs: [lint, rotan-startup]
 
     steps:
       - name: Checkout
