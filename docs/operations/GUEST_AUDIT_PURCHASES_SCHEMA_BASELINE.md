@@ -93,13 +93,23 @@ duplicate session IDs.
 
 ## Replay gates
 
-Pristine repository replay has a separate bootstrap prerequisite:
-`20260813212729_harden_guest_audit_purchase_privileges.sql` alters
-`public.set_guest_audit_purchases_updated_at()`, which no repository migration
-creates. See `docs/operations/DEPLOYMENT_GATES_AND_RELEASE_SEQUENCE.md`.
-Tests starting from a documented legacy prerequisite state establish bounded
-compatibility, not pristine bootstrap. Repair of that prerequisite is separate
-from this identity reconciliation; no production migration is authorized here.
+Repository bootstrap now creates the missing
+`public.set_guest_audit_purchases_updated_at()` function and its update trigger
+in the original guest-table creation migration, before the later hardening
+migration alters the function. The definition matches the observed hosted
+security-invoker function; existing functions and named triggers are preserved.
+The bootstrap fixture verifies timestamp behavior and preservation on rerun.
+
+This is a historical migration repair for new repository replays, not an
+instruction to rerun old migrations on a hosted database. Already-applied
+migration history does not automatically receive this change. See
+`docs/operations/DEPLOYMENT_GATES_AND_RELEASE_SEQUENCE.md` for the separate
+target-specific release boundary. No production migration is authorized here.
+
+The guarded fixture suite is not a full repository replay. Replay on plain
+PostgreSQL with emulated Supabase auth objects must be labeled as such; it is
+not a pristine Supabase-platform bootstrap. Historical assisted replay evidence
+remains bound to its original inputs and cannot be relabeled by this correction.
 
 The Schema Baseline Reconciliation PR may merge only after automated tests
 demonstrate:

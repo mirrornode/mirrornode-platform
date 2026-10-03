@@ -75,6 +75,28 @@ run_success_test() {
     -f "${file}"
 }
 
+creation_file="${root_dir}/supabase/migrations/20260618221629_create_guest_audit_purchases.sql"
+hardening_file="${root_dir}/supabase/migrations/20260813212729_harden_guest_audit_purchase_privileges.sql"
+
+# These includes have no transaction wrapper. Refuse wrapper drift before 007
+# can drop anything; its outer transaction must remain owned by the fixture.
+for bootstrap_include in "${creation_file}" "${hardening_file}"; do
+  if [[ ! -f "${bootstrap_include}" ]]; then
+    echo "Bootstrap include not found: ${bootstrap_include}" >&2
+    exit 66
+  fi
+  if grep -Eiq '(^|;)[[:space:]]*(begin([[:space:]]+(work|transaction))?|start[[:space:]]+transaction|commit([[:space:]]+(work|transaction))?|rollback([[:space:]]+(work|transaction))?)[[:space:]]*;' "${bootstrap_include}"; then
+    echo "Bootstrap include transaction wrapper changed; refusing fixture replay." >&2
+    exit 66
+  fi
+done
+
+echo "Running success-path test: 007_repository_trigger_bootstrap.sql"
+psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
+  -v creation_file="${creation_file}" \
+  -v hardening_file="${hardening_file}" \
+  -f "${test_dir}/007_repository_trigger_bootstrap.sql"
+
 run_success_test "${test_dir}/001_target_schema_contract.sql"
 run_success_test "${test_dir}/002_legacy_to_target_upgrade.sql"
 run_success_test "${test_dir}/003_target_to_target_noop.sql"

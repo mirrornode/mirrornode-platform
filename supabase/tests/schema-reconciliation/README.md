@@ -19,6 +19,13 @@ These tests must not add or validate any fulfillment receipt table, RPC,
 operator command endpoint, credential, actor-binding mechanism, release or
 delivery authority, or MOPCON mutation surface.
 
+The runner also checks the repository bootstrap prerequisite: the original
+guest-table migration must create the timestamp function before hardening uses
+it, wire its update trigger, and preserve an existing function/trigger on rerun.
+`007_repository_trigger_bootstrap.sql` runs transactionally before identity
+fixtures. This does not establish full Supabase-platform replay or authorize
+reapplying a historical migration to an existing hosted target.
+
 ## Disposable database only
 
 Run these tests only against a disposable PostgreSQL or Supabase test
@@ -120,3 +127,17 @@ The success fixtures operate transactionally and roll back their changes. The
 incompatible-state fixture intentionally commits because it spans separate
 `psql` invocations; its state exists only for the duration of the disposable
 test run.
+
+## Bootstrap fixture boundaries
+
+The runner checks both bootstrap includes for transaction-control statements
+before fixture 007 executes. Added BEGIN, COMMIT, ROLLBACK and START TRANSACTION
+wrappers are rejected with exit 66, before its destructive statements. This is a
+conservative text guard for the checked-in SQL format, not a general SQL parser.
+Changes to include syntax or indirect includes require review of rollback safety.
+Fixture 007 checks bootstrap security properties before hardening, exercises an
+existing modified function and same-name AFTER UPDATE trigger, and verifies that
+creation replay preserves both definitions. Preservation is deliberate even for
+a nonconforming existing definition; it does not certify existing-object behavior.
+Target compatibility requires separate read-only preflight as described in the
+release-sequence document. No hosted object is replaced by these tests.
