@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 from typing import Optional
-import hashlib, uuid, time
+import hashlib, hmac, uuid, time
 from supabase import create_client
 import os
 
@@ -19,7 +19,7 @@ def verify_bearer(authorization: str = Header(...)):
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer":
         raise HTTPException(401, "Invalid auth scheme")
-    if token != ROTAN_DEV_KEY:
+    if not hmac.compare_digest(token.encode(), ROTAN_DEV_KEY.encode()):
         raise HTTPException(403, "Forbidden")
     return token
 
