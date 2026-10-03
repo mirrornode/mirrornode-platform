@@ -59,9 +59,8 @@ The historical bytecode is inspected for constants, never executed. The retired
 value is selected by its pinned digest in memory and is not printed or saved.
 Tests clear the environment and stub third-party dependencies; they exercise
 startup ordering and bearer logic without service calls, not integration or
-deployed behavior. The CI candidate uses Python 3.14 and full Git history, with
-ci/test depending on ci/rotan-startup and ci/lint. Remote execution of this
-unpublished candidate remains unverified.
+deployed behavior. The CI workflow uses Python 3.14 and full Git history, with
+ci/test depending on ci/rotan-startup and ci/lint.
 
 Historical F3/F5 validation passed all eight final tests and detected six
 deliberate regressions on disposable source copies. The F3 application run
@@ -70,7 +69,7 @@ own observation time and logs; these historical results are not a fresh run.
 
 F4 credential revocation remains UNKNOWN/open. Its previously accepted
 non-blocking Gate 0 sequencing does not clear release. Required independent
-review, publication, remote CI, merge, provider verification and deployment
+review, merge, provider verification and deployment
 remain separate decisions. Overall release HOLD remains in force.
 
 Consolidated qualification (2026-10-03T06:58:31.612782+00:00): eight Python tests, all six
@@ -78,3 +77,24 @@ regression probes, 52 application tests across 11 files, lint, production build,
 workflow configuration checks and git diff --check passed locally. Application
 checks used Node 20.20.2; Python checks used Python 3.14. Dependency audits
 above remain the accepted October 1 observation and were not rerun here.
+
+## Remote review-gate observation (2026-10-03)
+
+The candidate was published as PR #57 at head
+`be385f7221e9b4fbeefb8b0dbe9a4dd89815ee09` against base
+`e9845f929de471753f0fca1eb161bea0f53d5e12`.
+[CI run #200](https://github.com/mirrornode/mirrornode-platform/actions/runs/37105053186)
+and [Canon Gate #126](https://github.com/mirrornode/mirrornode-platform/actions/runs/37105053237)
+completed successfully for that PR head. CI checkout used synthetic merge
+`6adee584d18dff3169ca8c14418a86f59c69cd1e`, whose Git tree matched
+that head. The remote jobs passed eight Python startup tests, 52 application
+tests across 11 files, lint and build. These results establish remote execution
+of the tracked candidate with GitHub's merge tree at that observation time.
+
+The npm installation logs in lint, test and build each reported five high
+severity vulnerabilities. The package and advisory details, runtime reachability
+and disposition have not been established by those summaries. The earlier pnpm
+audit result does not clear this npm finding. CI success does not prove deployed
+containment, provider installer equivalence, integration compatibility, or
+historical credential revocation. Independent approval and release disposition
+remain open. A new head requires fresh head-bound checks and review.
