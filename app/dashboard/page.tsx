@@ -1,88 +1,138 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { IBM_Plex_Sans, IBM_Plex_Mono, Newsreader } from "next/font/google";
+import { SnapshotTime } from "./_components/SnapshotTime";
+import styles from "./workspace.module.css";
+
+const sans = IBM_Plex_Sans({ weight: ["400", "500", "600"], subsets: ["latin"], variable: "--hud-sans", display: "swap" });
+const mono = IBM_Plex_Mono({ weight: ["400", "500"], subsets: ["latin"], variable: "--hud-mono", display: "swap" });
+const display = Newsreader({ subsets: ["latin"], variable: "--hud-display", display: "swap" });
+import { dockets } from "@/lib/operator-docket/dockets";
+import { OperatorDocketCard } from "./_components/OperatorDocketCard";
+
+// Evaluate evidence age at request time, never freeze readiness into a build.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Dashboard — MIRRORNODE",
-  description: "Live system dashboard for the MIRRORNODE orchestration lattice.",
+  title: "Operator Workspace — MIRRORNODE",
+  description:
+    "A bounded MIRRORNODE operating surface for navigating verified capabilities and work lanes.",
+  robots: {
+    index: false,
+    follow: false,
+  },
 };
 
-const agents = [
-  { id: "lucian",  name: "Lucian",  role: "Core Orchestrator",      status: "nominal", uptime: "99.98%", tasks: 1247, domain: "Cognitive Routing" },
-  { id: "osiris",  name: "Osiris",  role: "Payment & Commerce",      status: "nominal", uptime: "99.95%", tasks: 384,  domain: "Financial State" },
-  { id: "hermes",  name: "Hermes",  role: "Messenger & API Bridge",  status: "nominal", uptime: "99.99%", tasks: 2891, domain: "Communication" },
-  { id: "thoth",   name: "Thoth",   role: "Knowledge & Memory",      status: "nominal", uptime: "100%",   tasks: 5623, domain: "Persistent State" },
-  { id: "theia",   name: "Theia",   role: "Vision & Interface",      status: "nominal", uptime: "99.97%", tasks: 812,  domain: "Front-End Intel" },
-  { id: "ptah",    name: "Ptah",    role: "Builder & Infrastructure", status: "nominal", uptime: "99.93%", tasks: 156,  domain: "DevOps & Systems" },
+const lanes = [
+  {
+    title: "Osiris Audit",
+    description:
+      "Customer-facing structural audit flow: offer, checkout, verified intake, and controlled fulfillment.",
+    href: "/osiris-audit",
+    action: "Open audit surface",
+  },
+  {
+    title: "AI Nodes",
+    description:
+      "Navigate the current node-facing surfaces without presenting inferred runtime state as telemetry.",
+    href: "/agents",
+    action: "Open node directory",
+  },
+  {
+    title: "Librarian",
+    description:
+      "Knowledge and document-oriented working surface for material that belongs inside MIRRORNODE.",
+    href: "/workspace/files",
+    action: "Open librarian",
+  },
+  {
+    title: "Runtime Readiness",
+    description:
+      "Read the application readiness endpoint directly. Its response is runtime evidence, not a decorative status.",
+    href: "/api/health/ready",
+    action: "Read health evidence",
+  },
 ];
 
-const metrics = [
-  { label: "Total Tasks Processed", value: "11,113", delta: "+2.4%" },
-  { label: "Lattice Coherence",     value: "100%",   delta: "stable" },
-  { label: "Avg Agent Uptime",      value: "99.97%", delta: "+0.02%" },
-  { label: "Active Bridges",        value: "6",      delta: "nominal" },
+const buildTargets = [
+  "Client intake and case work",
+  "File intake, organization, and export",
+  "Direct node-assisted work surfaces",
+  "Osiris case operation and delivery",
+  "Operator legal and administrative workspace",
 ];
+
+// Server request clock, isolated from component rendering; force-dynamic prevents caching.
+function requestTime() {
+  return Date.now();
+}
 
 export default function Dashboard() {
+  const now = requestTime();
   return (
-    <div className="min-h-screen bg-[var(--background)] text-[var(--text)] font-mono">
-      {/* Nav */}
-      <nav className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
-        <Link href="/" className="text-[var(--accent)] text-sm tracking-widest font-bold hover:opacity-80">
-          [ MIRRORNODE ]
-        </Link>
-        <span className="text-xs tracking-widest text-[var(--text-muted)]">DASHBOARD</span>
-        <span className="text-xs text-green-400 tracking-wider">LIVE</span>
-      </nav>
-
-      {/* Header */}
-      <header className="px-6 pt-10 pb-6">
-        <p className="text-xs tracking-widest text-[var(--text-muted)] mb-2">System Overview</p>
-        <h1 className="text-3xl font-bold tracking-tight">Lattice Dashboard</h1>
+    <div className={`${styles.workspace} ${sans.variable} ${mono.variable} ${display.variable}`}>
+      <a href="#workspace-main" className={styles.skip}>Skip to workspace</a>
+      <header className={styles.header}>
+        <Link href="/" prefetch={false} className={styles.mark}>[ MIRRORNODE ]</Link>
+        <span className={styles.eyebrow}>Working surface · evidence bounded</span>
+        <span className={styles.seal}>Presentation is not authority</span>
       </header>
-
-      {/* KPI row */}
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-4 px-6 pb-8">
-        {metrics.map((m, i) => (
-          <div key={i} className="rounded-xl border border-[var(--border)] p-4 bg-[var(--surface)]">
-            <p className="text-xs text-[var(--text-muted)] tracking-wider mb-1">{m.label}</p>
-            <p className="text-xl font-bold">{m.value}</p>
-            <p className="text-xs text-[var(--accent)] mt-1">{m.delta}</p>
-          </div>
-        ))}
-      </section>
-
-      {/* Agent table */}
-      <section className="px-6 pb-16">
-        <h2 className="text-sm tracking-widest text-[var(--text-muted)] mb-4">Agent Registry</h2>
-        <div className="rounded-xl border border-[var(--border)] overflow-hidden">
-          {/* Table header */}
-          <div className="grid grid-cols-5 gap-4 px-4 py-3 bg-[var(--surface)] border-b border-[var(--border)]">
-            {["Agent", "Role", "Status", "Uptime", "Tasks"].map((h) => (
-              <span key={h} className="text-xs tracking-widest text-[var(--text-muted)]">{h}</span>
-            ))}
-          </div>
-          {/* Rows */}
-          {agents.map((agent, i) => (
-            <Link
-              key={i}
-              href={`/agents/${agent.id}`}
-              className="grid grid-cols-5 gap-4 px-4 py-4 border-b border-[var(--border)] hover:bg-[var(--surface-2)] transition-colors"
-            >
-              <span className="font-semibold">{agent.name}</span>
-              <span className="text-[var(--text-muted)] text-sm">{agent.role}</span>
-              <span className="text-green-400 text-xs tracking-wider">{agent.status}</span>
-              <span className="text-sm">{agent.uptime}</span>
-              <span className="text-sm">{agent.tasks.toLocaleString()}</span>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="px-6 py-4 border-t border-[var(--border)] flex justify-between text-xs text-[var(--text-muted)]">
-        <span>© 2026 MIRRORNODE — INPhase Resplendence Cognition</span>
-        <span>BUILD 0.1.0</span>
-      </footer>
+      <div className={styles.layout}>
+        <nav aria-label="Workspace surfaces" className={styles.rail}>
+          <p className={styles.eyebrow}>Surfaces</p>
+          <a href="#docket" className={styles.selected}>Operator docket</a>
+          {lanes.map(lane => <Link prefetch={false} key={lane.title} href={lane.href}>{lane.title}</Link>)}
+          <a href="#prospect-radar">Prospect Radar <span>HOLD · docket only</span></a>
+          <p className={styles.railNote}>Open a surface to inspect its evidence. Placement does not establish readiness.</p>
+        </nav>
+        <main id="workspace-main" className={styles.main}>
+          <section className={styles.intro} aria-labelledby="workspace-heading">
+            <p className={styles.eyebrow}>Operator workspace</p>
+            <h1 id="workspace-heading">Work from what the system can actually establish.</h1>
+            <p>Declared attention, bounded evidence, explicit next steps.</p>
+          </section>
+          <section id="docket" aria-labelledby="operator-docket-heading" className={styles.docket}>
+            <div className={styles.sectionHeading}><h2 id="operator-docket-heading">Operator docket</h2><span className={styles.eyebrow}>Curated attention</span></div>
+            <p className={styles.description}>Commercial evidence, Radar review, then the frozen workspace reference. Opening a card records no decision.</p>
+            <div className={styles.cards}>
+              {dockets.map(docket => <OperatorDocketCard key={docket.id} docket={docket} now={now} />)}
+            </div>
+          </section>
+          <aside aria-labelledby="bound-heading" className={styles.bound}>
+            <p className={styles.eyebrow}>Operating bound</p>
+            <h2 id="bound-heading">The HUD points.<br />It does not authorize.</h2>
+            <p>No inferred uptime, task counts, coherence scores, or live state. Runtime claims belong to explicit evidence surfaces.</p>
+            <dl>
+              <div><dt>Snapshot</dt><dd><SnapshotTime iso={new Date(now).toISOString()} /></dd></div>
+              <div><dt>Freshness</dt><dd>As of page load. Reload before a decision; this page does not poll.</dd></div>
+              <div><dt>Curator</dt><dd>Codex, from the Operator’s requested lanes.</dd></div>
+              <div><dt>Record path</dt><dd><code>docs/operator/</code><span>Repository documents; decisions and receipts remain separate.</span></dd></div>
+              <div><dt>Runtime verification</dt><dd><span className={styles.chip} data-state="UNKNOWN">UNKNOWN</span></dd></div>
+            </dl>
+            <p className={styles.boundFoot}>CURRENT describes a scoped receipt within its review interval. It does not establish runtime health or permission.</p>
+          </aside>
+          <section aria-labelledby="surfaces-heading" className={styles.surfaces}>
+            <div className={styles.sectionHeading}><h2 id="surfaces-heading">Evidence surfaces</h2><span className={styles.eyebrow}>Open to inspect</span></div>
+            <div className={styles.tiles}>
+              {lanes.map(lane => (
+                <article key={lane.title} className={styles.tile}>
+                  <h3>{lane.title}</h3>
+                  <p>{lane.description}</p>
+                  <div className={styles.empty}>No runtime observation loaded here.</div>
+                  <Link prefetch={false} href={lane.href}>{lane.action} <span aria-hidden="true">↗</span></Link>
+                </article>
+              ))}
+            </div>
+          </section>
+          <section className={styles.direction} aria-labelledby="direction-heading">
+            <p className={styles.eyebrow}>Build direction · targets only</p>
+            <h2 id="direction-heading">One workspace, progressively connected.</h2>
+            <p>Implementation targets become active only when their underlying state, authority, and evidence boundary is wired.</p>
+            <ul>{buildTargets.map(target => <li key={target}>{target}</li>)}</ul>
+          </section>
+        </main>
+      </div>
+      <footer className={styles.footer}>MIRRORNODE · Operator workspace · No inferred live-state claims</footer>
     </div>
   );
 }
