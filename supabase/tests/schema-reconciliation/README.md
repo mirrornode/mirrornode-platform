@@ -141,3 +141,5 @@ creation replay preserves both definitions. Preservation is deliberate even for
 a nonconforming existing definition; it does not certify existing-object behavior.
 Target compatibility requires separate read-only preflight as described in the
 release-sequence document. No hosted object is replaced by these tests.
+
+The runner also rejects a same-name UUID domain in legacy and target shapes, and malformed id-primary-key tables with a missing UUID default or nullable session identifier. Each rejection asserts SQLSTATE P0001, the applicable diagnostic, and unchanged columns, constraints and rows.

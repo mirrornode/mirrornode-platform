@@ -121,7 +121,7 @@ expected_output="$(
   exit 1
 }
 
-if [[ "${expected_output}" != *"guest_audit_purchases UUID identity reconciliation aborted: primary key is neither id nor stripe_session_id"* ]]; then
+if [[ "${expected_output}" != *"guest_audit_purchases UUID identity reconciliation aborted: table is neither the exact target shape nor the supported legacy shape"* ]]; then
   echo "Expected reconciliation abort message was not observed." >&2
   printf '%s\n' "${expected_output}" >&2
   exit 1
@@ -248,5 +248,72 @@ done
 
 psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
   -c 'drop table public.guest_audit_purchases;'
+
+
+# Reject a same-name UUID domain and malformed id-primary-key shapes without
+# changing any column, constraint or row. Domain identity is not built-in UUID.
+for shape in domain_legacy domain_target missing_default nullable_session; do
+  echo "Testing incompatible identity shape (${shape})."
+  psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 -v shape="${shape}" <<'SQL'
+begin;
+drop table if exists public.guest_audit_purchases;
+create schema if not exists reconciliation_custom;
+drop domain if exists reconciliation_custom.uuid;
+create domain reconciliation_custom.uuid as pg_catalog.uuid;
+select :'shape' = 'domain_legacy' as domain_legacy,
+       :'shape' = 'domain_target' as domain_target,
+       :'shape' = 'missing_default' as missing_default \gset
+\if :domain_legacy
+create table public.guest_audit_purchases (
+  id reconciliation_custom.uuid,
+  stripe_session_id text primary key
+);
+\elif :domain_target
+create table public.guest_audit_purchases (
+  id reconciliation_custom.uuid primary key default gen_random_uuid(),
+  stripe_session_id text not null unique
+);
+\elif :missing_default
+create table public.guest_audit_purchases (
+  id pg_catalog.uuid primary key,
+  stripe_session_id text not null unique
+);
+\else
+create table public.guest_audit_purchases (
+  id pg_catalog.uuid primary key default gen_random_uuid(),
+  stripe_session_id text unique
+);
+\endif
+insert into public.guest_audit_purchases (id, stripe_session_id)
+values (gen_random_uuid(), 'schema_review_fixture');
+commit;
+SQL
+  before_shape_fixture="$(snapshot_type_fixture)"
+  if expected_output="$(
+    psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
+      -v VERBOSITY=verbose -f "${migration}" 2>&1
+  )"; then
+    echo "FAIL: migration accepted incompatible identity shape ${shape}." >&2
+    exit 1
+  fi
+  if [[ "${shape}" == domain_legacy ]]; then
+    shape_message="existing id column is not uuid"
+  else
+    shape_message="table is neither the exact target shape nor the supported legacy shape"
+  fi
+  if [[ "${expected_output}" != *"${shape_message}"* ]] ||
+      ! grep -Eq 'ERROR:[[:space:]]+P0001:' <<<"${expected_output}"; then
+    printf '%s\n' "${expected_output}" >&2
+    exit 1
+  fi
+  after_shape_fixture="$(snapshot_type_fixture)"
+  if [[ "${before_shape_fixture}" != "${after_shape_fixture}" ]]; then
+    echo "FAIL: rejected migration changed identity fixture ${shape}." >&2
+    exit 1
+  fi
+  echo "PASS: ${shape} rejected with accurate diagnostic and unchanged state."
+done
+psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
+  -c 'drop table public.guest_audit_purchases; drop schema reconciliation_custom cascade;'
 
 echo "Schema reconciliation tests passed."

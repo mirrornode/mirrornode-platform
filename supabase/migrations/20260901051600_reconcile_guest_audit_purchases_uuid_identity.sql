@@ -67,12 +67,11 @@ begin
     exists (
       select 1
       from pg_catalog.pg_attribute a
-      join pg_catalog.pg_type t on t.oid = a.atttypid
       where a.attrelid = v_table
         and a.attname = 'id'
         and a.attnum > 0
         and not a.attisdropped
-        and t.typname = 'uuid'
+        and a.atttypid = 'pg_catalog.uuid'::pg_catalog.regtype
     ),
     exists (
       select 1
@@ -204,7 +203,7 @@ begin
       raise exception using
         errcode = 'P0001',
         message =
-          'guest_audit_purchases UUID identity reconciliation aborted: primary key is neither id nor stripe_session_id';
+          'guest_audit_purchases UUID identity reconciliation aborted: table is neither the exact target shape nor the supported legacy shape';
     end if;
 
     if v_id_exists and not v_id_is_uuid then
