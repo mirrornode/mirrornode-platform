@@ -31,7 +31,7 @@ begin
     and c.contype = 'p'
   group by c.oid;
 
-  if v_pk_columns <> array['stripe_session_id']::text[] then
+  if v_pk_columns is distinct from array['stripe_session_id']::text[] then
     raise exception
       'inbound-foreign-key assertion failed: parent primary key changed';
   end if;
