@@ -70,7 +70,7 @@ begin
     and c.contype = 'p'
   group by c.oid;
 
-  if v_pk_columns <> array['id']::text[] then
+  if v_pk_columns is distinct from array['id']::text[] then
     raise exception 'legacy upgrade failed: id did not become primary key';
   end if;
 

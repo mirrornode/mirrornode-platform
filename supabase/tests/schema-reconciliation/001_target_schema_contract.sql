@@ -41,7 +41,7 @@ begin
     and c.contype = 'p'
   group by c.oid;
 
-  if v_pk_columns <> array['id']::text[] then
+  if v_pk_columns is distinct from array['id']::text[] then
     raise exception 'schema contract failed: id is not the sole primary key';
   end if;
 
@@ -54,7 +54,7 @@ begin
   where a.attrelid = 'public.guest_audit_purchases'::regclass
     and a.attname = 'id';
 
-  if v_id_default not in ('gen_random_uuid()', 'extensions.gen_random_uuid()') then
+  if v_id_default is null or v_id_default not in ('gen_random_uuid()', 'extensions.gen_random_uuid()') then
     raise exception 'schema contract failed: id default is not gen_random_uuid()';
   end if;
 

@@ -143,3 +143,5 @@ Target compatibility requires separate read-only preflight as described in the
 release-sequence document. No hosted object is replaced by these tests.
 
 The runner also rejects a same-name UUID domain in legacy and target shapes, and malformed id-primary-key tables with a missing UUID default or nullable session identifier. Each rejection asserts SQLSTATE P0001, the applicable diagnostic, and unchanged columns, constraints and rows.
+
+The runner also corrupts the post-migration target primary key, target UUID default, and legacy replacement primary key. Each negative probe must fail at its specific contract assertion with SQLSTATE P0001; an unrelated SQL error or later insert failure does not count. The normal fixtures remain the passing-positive controls.

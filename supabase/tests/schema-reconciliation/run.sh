@@ -58,7 +58,8 @@ if [[ "$(grep -Ec '^[[:space:]]*begin;[[:space:]]*$' "${migration}")" != 1 ||
 fi
 
 migration_body="$(mktemp)"
-trap 'rm -f "${migration_body}"' EXIT
+negative_fixture="$(mktemp)"
+trap 'rm -f "${migration_body}" "${negative_fixture}"' EXIT
 sed -e '/^[[:space:]]*begin;[[:space:]]*$/d' \
     -e '/^[[:space:]]*commit;[[:space:]]*$/d' \
     "${migration}" > "${migration_body}"
@@ -101,6 +102,43 @@ run_success_test "${test_dir}/001_target_schema_contract.sql"
 run_success_test "${test_dir}/002_legacy_to_target_upgrade.sql"
 run_success_test "${test_dir}/003_target_to_target_noop.sql"
 run_success_test "${test_dir}/005_data_preservation_and_rerun.sql"
+
+# Corrupt the successful post-migration shape before its assertions. These
+# probes must fail at the intended assertion, not at a later INSERT or SQL error.
+for probe in target_pk target_default legacy_pk; do
+  case "${probe}" in
+    target_pk)
+      source_fixture="${test_dir}/001_target_schema_contract.sql"
+      corruption='alter table public.guest_audit_purchases drop constraint guest_audit_purchases_pkey;'
+      expected_message='schema contract failed: id is not the sole primary key' ;;
+    target_default)
+      source_fixture="${test_dir}/001_target_schema_contract.sql"
+      corruption='alter table public.guest_audit_purchases alter column id drop default;'
+      expected_message='schema contract failed: id default is not gen_random_uuid()' ;;
+    legacy_pk)
+      source_fixture="${test_dir}/002_legacy_to_target_upgrade.sql"
+      corruption='alter table public.guest_audit_purchases drop constraint guest_audit_purchases_pkey;'
+      expected_message='legacy upgrade failed: id did not become primary key' ;;
+  esac
+  if [[ "$(grep -Fc '\i :migration_file' "${source_fixture}")" != 1 ]]; then
+    echo "Fixture migration include changed; refusing negative probe." >&2
+    exit 66
+  fi
+  awk -v corruption="${corruption}" '{ print; if ($0 == "\\i :migration_file") print corruption; }' \
+    "${source_fixture}" > "${negative_fixture}"
+  if negative_output="$(psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
+    -v VERBOSITY=verbose -v migration_file="${migration_body}" \
+    -f "${negative_fixture}" 2>&1)"; then
+    echo "FAIL: ${probe} assertion accepted corrupted schema." >&2
+    exit 1
+  fi
+  if [[ "${negative_output}" != *"${expected_message}"* ]] ||
+      ! grep -Eq 'ERROR:[[:space:]]+P0001:' <<<"${negative_output}"; then
+    printf '%s\n' "${negative_output}" >&2
+    exit 1
+  fi
+  echo "PASS: ${probe} failed at its intended assertion (P0001)."
+done
 
 echo "Preparing persistent incompatible-shape fixture."
 
