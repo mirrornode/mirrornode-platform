@@ -73,6 +73,7 @@ run_success_test() {
     -X \
     -v ON_ERROR_STOP=1 \
     -v migration_file="${migration_body}" \
+    -v creation_file="${root_dir}/supabase/migrations/20260618221629_create_guest_audit_purchases.sql" \
     -f "${file}"
 }
 
@@ -219,6 +220,12 @@ psql "${DATABASE_URL}" \
 snapshot_type_fixture() {
   psql "${DATABASE_URL}" -X -A -t -v ON_ERROR_STOP=1 <<'SQL'
 select jsonb_build_object(
+  'security', (select jsonb_build_array(relrowsecurity, relforcerowsecurity, relacl::text)
+    from pg_catalog.pg_class where oid = 'public.guest_audit_purchases'::regclass),
+  'policies', (select jsonb_agg(jsonb_build_array(polname, polcmd, polpermissive,
+      polroles::text, pg_catalog.pg_get_expr(polqual, polrelid),
+      pg_catalog.pg_get_expr(polwithcheck, polrelid)) order by polname)
+    from pg_catalog.pg_policy where polrelid = 'public.guest_audit_purchases'::regclass),
   'columns', (
     select jsonb_agg(jsonb_build_array(
       a.attname, a.atttypid, a.atttypmod, a.attnotnull,
@@ -236,6 +243,14 @@ select jsonb_build_object(
     ) order by conname)
     from pg_catalog.pg_constraint
     where conrelid = 'public.guest_audit_purchases'::regclass
+  ),
+  'triggers', (
+    select jsonb_agg(jsonb_build_array(
+      tgname, tgenabled, pg_catalog.pg_get_triggerdef(oid),
+      pg_catalog.pg_get_functiondef(tgfoid)
+    ) order by tgname) from pg_catalog.pg_trigger
+    where tgrelid = 'public.guest_audit_purchases'::regclass
+      and not tgisinternal
   ),
   'rows', (
     select jsonb_agg(to_jsonb(t) order by stripe_session_id)
@@ -353,5 +368,32 @@ SQL
 done
 psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
   -c 'drop table public.guest_audit_purchases; drop schema reconciliation_custom cascade;'
+
+# Native integration of repository bootstrap with legacy UUID backfill.
+for mixed_ids in false true; do
+  psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
+    -v creation_file="${creation_file}" -v mixed_ids="${mixed_ids}" \
+    -f "${test_dir}/008_trigger_backfill_rejection.sql"
+  before_trigger_fixture="$(snapshot_type_fixture)"
+  if expected_output="$(psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
+      -v VERBOSITY=verbose -f "${migration}" 2>&1)"; then
+    echo "FAIL: backfill with repository update trigger was accepted." >&2
+    exit 1
+  fi
+  if [[ "${expected_output}" != *"UUID backfill with enabled update triggers requires a separately reviewed migration"* ]] ||
+      ! grep -Eq 'ERROR:[[:space:]]+P0001:' <<<"${expected_output}"; then
+    printf '%s\n' "${expected_output}" >&2
+    exit 1
+  fi
+  after_trigger_fixture="$(snapshot_type_fixture)"
+  if [[ "${before_trigger_fixture}" != "${after_trigger_fixture}" ]]; then
+    echo "FAIL: rejected backfill changed columns, constraints, rows or triggers." >&2
+    exit 1
+  fi
+  echo "PASS: trigger backfill rejected; full state preserved (mixed_ids=${mixed_ids})."
+done
+psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
+  -c 'drop table public.guest_audit_purchases; drop function public.set_guest_audit_purchases_updated_at();'
+run_success_test "${test_dir}/009_trigger_without_backfill.sql"
 
 echo "Schema reconciliation tests passed."

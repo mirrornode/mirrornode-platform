@@ -77,7 +77,12 @@ The supported legacy state is:
 stripe_session_id text primary key
 ```
 
-with no incompatible incoming foreign keys.
+with no incompatible incoming foreign keys. If UUID fill is required, enabled
+non-internal UPDATE triggers also make that shape unsupported: reconciliation
+rejects it with P0001 and preserves the original state. Trigger-aware backfill
+requires a separately reviewed migration. No triggers are disabled or replaced.
+Legacy tables whose UUIDs are complete issue no UPDATE, including an empty
+legacy table; the exact target branch remains a no-op.
 
 The migration:
 

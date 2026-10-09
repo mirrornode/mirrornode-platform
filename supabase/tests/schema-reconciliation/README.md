@@ -145,3 +145,16 @@ release-sequence document. No hosted object is replaced by these tests.
 The runner also rejects a same-name UUID domain in legacy and target shapes, and malformed id-primary-key tables with a missing UUID default or nullable session identifier. Each rejection asserts SQLSTATE P0001, the applicable diagnostic, and unchanged columns, constraints and rows.
 
 The runner also corrupts the post-migration target primary key, target UUID default, and legacy replacement primary key. Each negative probe must fail at its specific contract assertion with SQLSTATE P0001; an unrelated SQL error or later insert failure does not count. The normal fixtures remain the passing-positive controls.
+
+## Enabled update-trigger backfill boundary
+
+Legacy rows requiring UUID fill are rejected with P0001 when any enabled
+non-internal UPDATE trigger exists. Replica-only, statement and column-specific
+triggers are conservatively included. No trigger is disabled or replaced.
+Fixtures 008 (missing and mixed UUIDs) integrate the actual creation migration
+with reconciliation and compare complete rows, columns, constraints, trigger
+enablement and trigger-function definitions after rejection. Fixture 009
+converts a fully populated UUID legacy table with real timestamp and rejecting
+statement triggers, then reruns without issuing an UPDATE or changing rows.
+This is a fail-closed correction, not support for populated trigger-bearing
+legacy backfill; that shape requires a separately reviewed migration.

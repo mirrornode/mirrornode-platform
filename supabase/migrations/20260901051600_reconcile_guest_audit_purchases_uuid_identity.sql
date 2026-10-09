@@ -262,9 +262,34 @@ begin
           'guest_audit_purchases UUID identity reconciliation aborted: stripe_session_id contains duplicate values';
     end if;
 
-    update public.guest_audit_purchases
-    set id = gen_random_uuid()
+    select count(*)
+    into v_null_id_count
+    from public.guest_audit_purchases
     where id is null;
+
+    -- A UUID-only UPDATE can invoke arbitrary row/statement update triggers.
+    -- Preserve historical data by refusing that unreviewed legacy shape rather
+    -- than disabling triggers or replacing existing trigger implementations.
+    -- Conservatively include replica-only triggers and column-specific triggers.
+    if v_null_id_count > 0 then
+      if exists (
+        select 1
+        from pg_catalog.pg_trigger t
+        where t.tgrelid = v_table
+          and not t.tgisinternal
+          and t.tgenabled <> 'D'
+          and (t.tgtype & 16) <> 0
+      ) then
+        raise exception using
+          errcode = 'P0001',
+          message =
+            'guest_audit_purchases UUID identity reconciliation aborted: UUID backfill with enabled update triggers requires a separately reviewed migration';
+      end if;
+
+      update public.guest_audit_purchases
+      set id = gen_random_uuid()
+      where id is null;
+    end if;
 
     select count(*)
     into v_null_id_count
