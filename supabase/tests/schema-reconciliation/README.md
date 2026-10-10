@@ -158,3 +158,13 @@ converts a fully populated UUID legacy table with real timestamp and rejecting
 statement triggers, then reruns without issuing an UPDATE or changing rows.
 This is a fail-closed correction, not support for populated trigger-bearing
 legacy backfill; that shape requires a separately reviewed migration.
+
+## Session upsert compatibility
+
+The target requires non-deferrable session uniqueness. Reconciliation rejects
+any single-column deferrable UNIQUE constraint on stripe_session_id with P0001,
+including initially immediate, initially deferred, and mixed immediate/deferred
+constraints. The runner compares rows, columns, constraints, RLS, ACLs, policies
+and triggers before and after each rejection. The normal target fixture executes
+ON CONFLICT (stripe_session_id) DO UPDATE as the positive application control.
+No existing uniqueness constraint is replaced to repair an unsupported target.

@@ -69,6 +69,7 @@ begin
      and a.attnum = key_columns.attnum
     where c.conrelid = 'public.guest_audit_purchases'::regclass
       and c.contype = 'u'
+      and not c.condeferrable
     group by c.oid
     having array_agg(a.attname::text order by key_columns.ordinality)
       = array['stripe_session_id']::text[]
@@ -99,5 +100,21 @@ begin
   end;
 end
 $$;
+
+-- Exercise the same arbiter used by webhook and intake upserts.
+insert into public.guest_audit_purchases (stripe_session_id, fulfillment_status)
+values ('cs_target_contract', 'intake_complete')
+on conflict (stripe_session_id) do update
+set fulfillment_status = excluded.fulfillment_status;
+
+do $
+begin
+  if (select fulfillment_status from public.guest_audit_purchases
+      where stripe_session_id = 'cs_target_contract')
+      is distinct from 'intake_complete' then
+    raise exception 'schema contract failed: session upsert did not update';
+  end if;
+end
+$;
 
 rollback;

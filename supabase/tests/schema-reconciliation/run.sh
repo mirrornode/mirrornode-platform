@@ -396,4 +396,56 @@ psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
   -c 'drop table public.guest_audit_purchases; drop function public.set_guest_audit_purchases_updated_at();'
 run_success_test "${test_dir}/009_trigger_without_backfill.sql"
 
+
+# A matching deferrable constraint prevents ON CONFLICT arbitration, including
+# when an immediate UNIQUE constraint also exists on the same column.
+for shape in immediate deferred mixed; do
+  psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 -v shape="${shape}" <<'SQL'
+begin;
+drop table if exists public.guest_audit_purchases;
+create table public.guest_audit_purchases (
+  id uuid primary key default gen_random_uuid(),
+  stripe_session_id text not null
+);
+select :'shape' = 'deferred' as deferred,
+       :'shape' = 'mixed' as mixed \gset
+\if :deferred
+alter table public.guest_audit_purchases
+  add constraint session_deferred unique (stripe_session_id) deferrable initially deferred;
+\else
+alter table public.guest_audit_purchases
+  add constraint session_deferred unique (stripe_session_id) deferrable initially immediate;
+\endif
+\if :mixed
+alter table public.guest_audit_purchases
+  add constraint session_immediate unique (stripe_session_id);
+\endif
+insert into public.guest_audit_purchases (stripe_session_id)
+values ('cs_deferrable_rejection');
+alter table public.guest_audit_purchases enable row level security;
+create policy rejection_policy on public.guest_audit_purchases
+  for select to authenticated using (false);
+grant select on public.guest_audit_purchases to service_role;
+commit;
+SQL
+  before_fixture="$(snapshot_type_fixture)"
+  if expected_output="$(psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
+      -v VERBOSITY=verbose -f "${migration}" 2>&1)"; then
+    echo "FAIL: deferrable session uniqueness accepted (${shape})." >&2
+    exit 1
+  fi
+  if [[ "${expected_output}" != *"deferrable stripe_session_id uniqueness requires a separately reviewed migration"* ]] ||
+      ! grep -Eq 'ERROR:[[:space:]]+P0001:' <<<"${expected_output}"; then
+    printf '%s\n' "${expected_output}" >&2
+    exit 1
+  fi
+  if [[ "${before_fixture}" != "$(snapshot_type_fixture)" ]]; then
+    echo "FAIL: rejected deferrable fixture changed state." >&2
+    exit 1
+  fi
+  echo "PASS: deferrable uniqueness rejected with unchanged state (${shape})."
+done
+psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
+  -c 'drop table public.guest_audit_purchases;'
+
 echo "Schema reconciliation tests passed."

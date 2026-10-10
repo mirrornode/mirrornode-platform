@@ -168,6 +168,29 @@ begin
     coalesce(v_pk_columns, array[]::text[])
       = array['stripe_session_id']::text[];
 
+  -- ON CONFLICT inference also considers additional matching constraints.
+  -- Reject any deferrable session UNIQUE constraint, even when an immediate
+  -- constraint exists alongside it; do not silently replace existing objects.
+  if exists (
+    select 1
+    from pg_catalog.pg_constraint c
+    join lateral unnest(c.conkey) with ordinality
+      as key_columns(attnum, ordinality) on true
+    join pg_catalog.pg_attribute a
+      on a.attrelid = c.conrelid and a.attnum = key_columns.attnum
+    where c.conrelid = v_table
+      and c.contype = 'u'
+      and c.condeferrable
+    group by c.oid
+    having array_agg(a.attname::text order by key_columns.ordinality)
+      = array['stripe_session_id']::text[]
+  ) then
+    raise exception using
+      errcode = 'P0001',
+      message =
+        'guest_audit_purchases UUID identity reconciliation aborted: deferrable stripe_session_id uniqueness requires a separately reviewed migration';
+  end if;
+
   select exists (
     select 1
     from pg_catalog.pg_constraint c
@@ -179,6 +202,7 @@ begin
      and a.attnum = key_columns.attnum
     where c.conrelid = v_table
       and c.contype = 'u'
+      and not c.condeferrable
     group by c.oid
     having array_agg(a.attname::text order by key_columns.ordinality)
       = array['stripe_session_id']::text[]
