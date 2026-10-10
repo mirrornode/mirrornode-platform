@@ -107,7 +107,7 @@ values ('cs_target_contract', 'intake_complete')
 on conflict (stripe_session_id) do update
 set fulfillment_status = excluded.fulfillment_status;
 
-do $
+do $$
 begin
   if (select fulfillment_status from public.guest_audit_purchases
       where stripe_session_id = 'cs_target_contract')
@@ -115,6 +115,6 @@ begin
     raise exception 'schema contract failed: session upsert did not update';
   end if;
 end
-$;
+$$;
 
 rollback;
