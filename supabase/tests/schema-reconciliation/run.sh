@@ -448,4 +448,49 @@ done
 psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
   -c 'drop table public.guest_audit_purchases;'
 
+# A deferrable UUID primary key cannot be the documented FK identity target.
+for pk_mode in immediate deferred; do
+  psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 -v pk_mode="${pk_mode}" <<'SQL'
+begin;
+drop table if exists public.guest_audit_purchases;
+create table public.guest_audit_purchases (
+  id uuid not null default gen_random_uuid(),
+  stripe_session_id text not null unique
+);
+select :'pk_mode' = 'deferred' as deferred \gset
+\if :deferred
+alter table public.guest_audit_purchases
+  add constraint guest_audit_purchases_pkey primary key (id) deferrable initially deferred;
+\else
+alter table public.guest_audit_purchases
+  add constraint guest_audit_purchases_pkey primary key (id) deferrable initially immediate;
+\endif
+insert into public.guest_audit_purchases (stripe_session_id)
+values ('cs_deferrable_pk_rejection');
+alter table public.guest_audit_purchases enable row level security;
+create policy pk_rejection_policy on public.guest_audit_purchases
+  for select to authenticated using (false);
+grant select on public.guest_audit_purchases to service_role;
+commit;
+SQL
+  before_fixture="$(snapshot_type_fixture)"
+  if expected_output="$(psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
+      -v VERBOSITY=verbose -f "${migration}" 2>&1)"; then
+    echo "FAIL: deferrable id primary key accepted (${pk_mode})." >&2
+    exit 1
+  fi
+  if [[ "${expected_output}" != *"deferrable id primary key requires a separately reviewed migration"* ]] ||
+      ! grep -Eq 'ERROR:[[:space:]]+P0001:' <<<"${expected_output}"; then
+    printf '%s\n' "${expected_output}" >&2
+    exit 1
+  fi
+  if [[ "${before_fixture}" != "$(snapshot_type_fixture)" ]]; then
+    echo "FAIL: rejected deferrable primary-key fixture changed state." >&2
+    exit 1
+  fi
+  echo "PASS: deferrable id primary key rejected with unchanged state (${pk_mode})."
+done
+psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
+  -c 'drop table public.guest_audit_purchases;'
+
 echo "Schema reconciliation tests passed."

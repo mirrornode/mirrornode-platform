@@ -168,6 +168,22 @@ begin
     coalesce(v_pk_columns, array[]::text[])
       = array['stripe_session_id']::text[];
 
+  -- The UUID primary key is also the documented foreign-key target.
+  -- Preserve unsupported constraints rather than silently accepting or replacing
+  -- a deferrable primary key, regardless of its initial checking mode.
+  if v_pk_is_id and exists (
+    select 1
+    from pg_catalog.pg_constraint c
+    where c.conrelid = v_table
+      and c.contype = 'p'
+      and c.condeferrable
+  ) then
+    raise exception using
+      errcode = 'P0001',
+      message =
+        'guest_audit_purchases UUID identity reconciliation aborted: deferrable id primary key requires a separately reviewed migration';
+  end if;
+
   -- ON CONFLICT inference also considers additional matching constraints.
   -- Reject any deferrable session UNIQUE constraint, even when an immediate
   -- constraint exists alongside it; do not silently replace existing objects.

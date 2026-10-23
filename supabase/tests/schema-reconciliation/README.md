@@ -86,6 +86,8 @@ The runner requires exit status zero for:
 2. `002_legacy_to_target_upgrade.sql`
 3. `003_target_to_target_noop.sql`
 4. `005_data_preservation_and_rerun.sql`
+5. `007_repository_trigger_bootstrap.sql` (runs first)
+6. `009_trigger_without_backfill.sql`
 
 Any nonzero exit status stops the runner.
 
@@ -168,3 +170,13 @@ constraints. The runner compares rows, columns, constraints, RLS, ACLs, policies
 and triggers before and after each rejection. The normal target fixture executes
 ON CONFLICT (stripe_session_id) DO UPDATE as the positive application control.
 No existing uniqueness constraint is replaced to repair an unsupported target.
+
+## UUID foreign-key target compatibility
+
+The UUID primary key must be non-deferrable. Reconciliation rejects an existing
+deferrable primary key on id with P0001, for both initially immediate and initially
+deferred modes. The runner compares complete rows, columns, constraints, RLS,
+ACLs, policy definitions and triggers before and after rejection. It does not
+replace the unsupported key. The normal target fixture verifies a non-deferrable
+primary key and creates a referencing table as a positive foreign-key control;
+that table is removed by the fixture's rollback.

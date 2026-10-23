@@ -45,6 +45,14 @@ begin
     raise exception 'schema contract failed: id is not the sole primary key';
   end if;
 
+  if exists (
+    select 1 from pg_catalog.pg_constraint
+    where conrelid = 'public.guest_audit_purchases'::regclass
+      and contype = 'p' and condeferrable
+  ) then
+    raise exception 'schema contract failed: id primary key is deferrable';
+  end if;
+
   select pg_catalog.pg_get_expr(d.adbin, d.adrelid)
   into v_id_default
   from pg_catalog.pg_attribute a
@@ -116,5 +124,14 @@ begin
   end if;
 end
 $$;
+
+-- Verify the relational identity contract with an actual foreign key.
+create table public.schema_reconciliation_fk_positive_control (
+  purchase_id uuid references public.guest_audit_purchases(id)
+);
+alter table public.schema_reconciliation_fk_positive_control enable row level security;
+insert into public.schema_reconciliation_fk_positive_control (purchase_id)
+select id from public.guest_audit_purchases
+where stripe_session_id = 'cs_target_contract';
 
 rollback;
