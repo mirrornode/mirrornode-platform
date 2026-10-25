@@ -147,7 +147,7 @@ PR #54 database correction was verified at `4324e558feda1c5bf9846a0795007946b60f
 
 Before any approved rollout:
 
-1. Verify the intended target and existing `set_guest_audit_purchases_updated_at()` trigger prerequisite. The repository hardening migration references this legacy function without creating it.
+1. Verify the intended target and existing `set_guest_audit_purchases_updated_at()` trigger prerequisite. Fresh repository replay now creates this function in `20260618221629_create_guest_audit_purchases.sql` before the hardening migration references it. Previously recorded hosted migration versions are not repaired by editing that historical file; verify the actual target function and migration ledger before any separately approved rollout.
 2. Inventory legacy intake_complete rows lacking authorization using read-only access. The 2026-09-06 observation found two paid Osiris cases; refresh this count before acting. Do not infer or backfill authorization.
 3. Obtain approval for target database migration and application rollout. Apply `20260906142000_add_osiris_controlled_fulfillment_start.sql` before exposing code that writes its new columns. Verify RPC grants and readiness in the target.
 4. Verify required server configuration by presence only: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OSIRIS_OPERATOR_TOKEN`, and `OSIRIS_OPERATOR_ACTOR_ID`. Never print their values.
