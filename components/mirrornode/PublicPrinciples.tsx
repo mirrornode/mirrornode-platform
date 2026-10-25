@@ -10,7 +10,7 @@ export function PublicPrinciples() {
       <div className="mt-9 grid gap-4 md:grid-cols-3">
         {[
           { title: "Control", body: "Know who can act, what requires approval, and where the system must stop." },
-          { title: "Continuity", body: "Make handoffs, dependencies, and operating context understandable beyond a single session." },
+          { title: "Continuity", body: "Make dependencies, handoffs, and operating context understandable across changes in models, providers, and sessions." },
           { title: "Evidence", body: "Separate verified behavior from assumptions, claims, and plans. Document what can actually be supported." },
         ].map((item) => (
           <article key={item.title} className="rounded-xl border border-white/10 bg-white/[0.035] p-6">
