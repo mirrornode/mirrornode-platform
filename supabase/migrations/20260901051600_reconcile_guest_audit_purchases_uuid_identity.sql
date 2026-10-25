@@ -350,8 +350,9 @@ begin
       alter column id set not null;
 
     -- The legacy primary key itself already guarantees stripe_session_id
-    -- uniqueness. The primary-key replacement and replacement unique constraint
-    -- run in one transaction, so no session can observe a committed gap.
+    -- uniqueness. Key replacement and any needed UNIQUE addition run in one
+    -- transaction, so no session can observe a committed gap. Preserve an
+    -- existing immediate session UNIQUE constraint, regardless of its name.
     execute format(
       'alter table public.guest_audit_purchases drop constraint %I',
       v_pk_name
@@ -360,9 +361,11 @@ begin
     alter table public.guest_audit_purchases
       add constraint guest_audit_purchases_pkey primary key (id);
 
-    alter table public.guest_audit_purchases
-      add constraint guest_audit_purchases_stripe_session_id_key
-      unique (stripe_session_id);
+    if not v_session_unique then
+      alter table public.guest_audit_purchases
+        add constraint guest_audit_purchases_stripe_session_id_key
+        unique (stripe_session_id);
+    end if;
   end if;
 end
 $$;

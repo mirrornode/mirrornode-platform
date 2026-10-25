@@ -91,6 +91,15 @@ The runner requires exit status zero for:
 
 Any nonzero exit status stops the runner.
 
+Fixture `002` runs three legacy cases: no separate session UNIQUE constraint,
+an existing canonical-name immediate UNIQUE, and an existing differently named
+immediate UNIQUE. It requires exactly one immediate session UNIQUE after upgrade,
+preserves existing constraint/backing-index OIDs and definitions, checks all
+business values, exercises `ON CONFLICT DO UPDATE`, and reruns reconciliation
+without changing rows, assigned UUIDs, or session uniqueness objects. Direct
+fixture invocation defaults `session_unique_shape` to `none`; the runner passes
+each case explicitly. Success fixtures retain their rollback-owned transaction.
+
 ## Expected-failure case
 
 `004_incompatible_state_rejection.sql` is intentionally a **persistent

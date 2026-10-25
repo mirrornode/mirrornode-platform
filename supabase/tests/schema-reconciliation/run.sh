@@ -66,6 +66,7 @@ sed -e '/^[[:space:]]*begin;[[:space:]]*$/d' \
 
 run_success_test() {
   local file="$1"
+  local session_unique_shape="${2:-none}"
 
   echo "Running success-path test: $(basename "${file}")"
 
@@ -73,6 +74,7 @@ run_success_test() {
     -X \
     -v ON_ERROR_STOP=1 \
     -v migration_file="${migration_body}" \
+    -v session_unique_shape="${session_unique_shape}" \
     -v creation_file="${root_dir}/supabase/migrations/20260618221629_create_guest_audit_purchases.sql" \
     -f "${file}"
 }
@@ -100,13 +102,17 @@ psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
   -f "${test_dir}/007_repository_trigger_bootstrap.sql"
 
 run_success_test "${test_dir}/001_target_schema_contract.sql"
-run_success_test "${test_dir}/002_legacy_to_target_upgrade.sql"
+for session_unique_shape in none canonical alternate; do
+  echo "Testing legacy session uniqueness (${session_unique_shape})."
+  run_success_test "${test_dir}/002_legacy_to_target_upgrade.sql" "${session_unique_shape}"
+done
 run_success_test "${test_dir}/003_target_to_target_noop.sql"
 run_success_test "${test_dir}/005_data_preservation_and_rerun.sql"
 
 # Corrupt the successful post-migration shape before its assertions. These
 # probes must fail at the intended assertion, not at a later INSERT or SQL error.
 for probe in target_pk target_default legacy_pk; do
+  expected_includes=1
   case "${probe}" in
     target_pk)
       source_fixture="${test_dir}/001_target_schema_contract.sql"
@@ -117,11 +123,12 @@ for probe in target_pk target_default legacy_pk; do
       corruption='alter table public.guest_audit_purchases alter column id drop default;'
       expected_message='schema contract failed: id default is not gen_random_uuid()' ;;
     legacy_pk)
+      expected_includes=2
       source_fixture="${test_dir}/002_legacy_to_target_upgrade.sql"
       corruption='alter table public.guest_audit_purchases drop constraint guest_audit_purchases_pkey;'
       expected_message='legacy upgrade failed: id did not become primary key' ;;
   esac
-  if [[ "$(grep -Fc '\i :migration_file' "${source_fixture}")" != 1 ]]; then
+  if [[ "$(grep -Fc '\i :migration_file' "${source_fixture}")" != "${expected_includes}" ]]; then
     echo "Fixture migration include changed; refusing negative probe." >&2
     exit 66
   fi
