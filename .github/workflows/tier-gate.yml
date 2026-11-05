@@ -1,0 +1,80 @@
+# OPERATION CLEAR PATH — interim, Operator-attested Tier C gate.
+# Source: default branch. Never check out or execute pull-request code here.
+# This workflow is not a substitute for an independent human security review.
+name: Tier C Clearance Gate
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  tier-gate:
+    name: tier-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify current PR head and clearance receipt
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // All API data is treated as data, never interpolated into shell commands.
+            const {owner, repo} = context.repo;
+            const pull_number = context.issue.number;
+            const pr = (await github.rest.pulls.get({owner, repo, pull_number})).data;
+            if (pr.base.ref !== 'main') {
+              core.setFailed('Unexpected base branch: ' + pr.base.ref);
+              return;
+            }
+            const changed = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number, per_page: 100,
+            });
+            // Conservative paths; NOT comprehensive semantic risk analysis.
+            const protectedPaths = [
+              /^\.github\//,
+              /^supabase\//,
+              /^app\/api\//,
+              /^src\/app\/api\//,
+              /^app\/osiris\//,
+              /^scripts\//,
+              /^server\//,
+              /(^|\/)(middleware|instrumentation)\.[cm]?[jt]sx?$/,
+              /(^|\/)(auth|session|credential|secret|security|permission|payment|billing|stripe|webhook|checkout|fulfillment)(\/|[._-])/i,
+              /(^|\/)\.env(\.|$)/,
+              /^(vercel\.json|next\.config\.[^/]+|Dockerfile|package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/,
+            ];
+            const hits = changed.map(f => f.filename).filter(
+              path => protectedPaths.some(rx => rx.test(path))
+            );
+            core.summary.addHeading(hits.length ? 'Tier C: protected paths' : 'Tier A/B: no protected paths detected');
+            core.summary.addList(hits.length ? hits : ['No matching protected paths. Manual semantic risk classification still required.']);
+            await core.summary.write();
+            if (!hits.length) return;
+
+            const label = pr.labels.some(l => l.name === 'tier-c:cleared');
+            if (!label) {
+              core.setFailed('Tier C requires tier-c:cleared and a current-head Operator receipt.');
+              return;
+            }
+            const repoMeta = (await github.rest.repos.get({owner, repo})).data;
+            const operatorLogin = repoMeta.owner.login;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: pull_number, per_page: 100,
+            });
+            // An issue comment is Operator attestation, NOT independent review.
+            const valid = comments.some(comment => {
+              if (comment.user?.login !== operatorLogin) return false;
+              const body = (comment.body || '').trim();
+              const match = body.match(/^TIER-C OPERATOR ATTESTATION v1\r?\nHEAD_SHA=([a-f0-9]{40})\r?\nEVIDENCE_URL=(https:\/\/[^\s]+)\s*$/);
+              return Boolean(match && match[1] === pr.head.sha);
+            });
+            if (!valid) {
+              core.setFailed('Missing owner-authored Tier C attestation for exact PR head ' + pr.head.sha + '. Labels do not carry forward approval after a push.');
+              return;
+            }
+            core.info('Tier C Operator receipt matched current head ' + pr.head.sha + '. This does not establish independent review.');
