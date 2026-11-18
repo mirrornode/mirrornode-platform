@@ -5,11 +5,10 @@ import Stripe from 'stripe';
 import { stripeEnv } from '@/lib/env/stripe';
 import { OSIRIS_AUDIT_V1_CHANNEL_AUTHORIZATION_TEXT } from '@/lib/osiris-audit/authorization';
 import { osirisAuditIntakeSchema } from '@/lib/osiris-audit/intake';
+import { PURCHASE_TABLE, recordOsirisPayment } from '@/lib/osiris-audit/purchase-ledger';
+import { OSIRIS_AUDIT_V1_FLOW, checkOsirisOffer } from '@/lib/osiris-audit/webhook-gates';
 
 export const dynamic = 'force-dynamic';
-
-const PURCHASE_TABLE = 'guest_audit_purchases';
-const AUDIT_FLOW = 'osiris-audit-v1';
 
 export async function POST(req: NextRequest) {
   let parsed: ReturnType<typeof osirisAuditIntakeSchema.safeParse>;
@@ -53,18 +52,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const hasCanonicalAuditPrice =
-    session.line_items?.data.some(
-      (lineItem) =>
-        lineItem.price?.id === stripeEnv.STRIPE_AUDIT_PRICE_ID &&
-        lineItem.quantity === 1
-    ) ?? false;
+  // Same offer check as the payment webhook (lib/osiris-audit/webhook-gates.ts).
+  const offer = checkOsirisOffer(
+    session,
+    session.line_items?.data,
+    stripeEnv.STRIPE_AUDIT_PRICE_ID
+  );
 
   if (
-    session.mode !== 'payment' ||
-    session.metadata?.flow !== AUDIT_FLOW ||
+    session.metadata?.flow !== OSIRIS_AUDIT_V1_FLOW ||
     session.payment_status !== 'paid' ||
-    !hasCanonicalAuditPrice
+    !offer.ok
   ) {
     return NextResponse.json(
       { error: 'This session is not a paid Osiris Audit v1 purchase' },
@@ -78,22 +76,21 @@ export async function POST(req: NextRequest) {
   );
   const now = new Date().toISOString();
 
-  const { error: paymentError } = await supabase
-    .from(PURCHASE_TABLE)
-    .upsert(
-      {
-        stripe_customer_id:
-          typeof session.customer === 'string'
-            ? session.customer
-            : session.customer?.id ?? null,
-        stripe_session_id: session.id,
-        customer_email: session.customer_details?.email ?? null,
-        flow: AUDIT_FLOW,
-        status: session.payment_status || session.status || 'completed',
-        updated_at: now,
-      },
-      { onConflict: 'stripe_session_id' }
-    );
+  // Stripe keeps payment_status 'paid' after a refund, so this never overwrites
+  // a refunded, disputed or review-held ledger row.
+  const { error: paymentError } = await recordOsirisPayment(
+    supabase,
+    {
+      stripe_session_id: session.id,
+      stripe_customer_id:
+        typeof session.customer === 'string'
+          ? session.customer
+          : session.customer?.id ?? null,
+      customer_email: session.customer_details?.email ?? null,
+    },
+    session.payment_status,
+    now
+  );
 
   if (paymentError) {
     console.error('[osiris-intake] Payment reconciliation failed:', paymentError.message);
@@ -119,6 +116,7 @@ export async function POST(req: NextRequest) {
       updated_at: now,
     })
     .eq('stripe_session_id', session.id)
+    .eq('status', 'paid')
     .eq('fulfillment_status', 'intake_pending')
     .is('intake_submitted_at', null)
     .select('stripe_session_id');
@@ -133,7 +131,7 @@ export async function POST(req: NextRequest) {
 
   if (!updatedRows || updatedRows.length === 0) {
     return NextResponse.json(
-      { error: 'Intake was already submitted or fulfillment has already advanced' },
+      { error: 'Intake is not open for this purchase' },
       { status: 409 }
     );
   }

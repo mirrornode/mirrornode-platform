@@ -4,13 +4,18 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { stripeEnv } from '@/lib/env/stripe';
 import {
   OSIRIS_AUDIT_V1_FLOW,
-  OSIRIS_AUDIT_V1_PAUSABLE_STATES,
   checkOsirisCompletedSession,
+  checkOsirisOffer,
   classifyRefund,
   expectedLivemode,
 } from '@/lib/osiris-audit/webhook-gates';
-
-const PURCHASE_TABLE = 'guest_audit_purchases';
+import {
+  ensureOsirisPurchaseRow,
+  holdOsirisCase,
+  markOsirisRefunded,
+  recordOsirisPayment,
+  type OsirisPurchaseFacts,
+} from '@/lib/osiris-audit/purchase-ledger';
 
 export async function POST(req: NextRequest) {
   const stripe = new Stripe(stripeEnv.STRIPE_SECRET_KEY, {
@@ -70,31 +75,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'DB write failed' }, { status: 500 });
       }
     } else if (flow === OSIRIS_AUDIT_V1_FLOW) {
-      const check = checkOsirisCompletedSession(session);
-      if (!check.ok) {
-        console.warn('[webhook] Osiris session does not match the published offer:', session.id, check.reason);
-        return NextResponse.json({ received: true, ignored: 'offer_mismatch' });
-      }
-
-      const { error } = await supabase
-        .from(PURCHASE_TABLE)
-        .upsert(
-          {
-            stripe_customer_id:
-              typeof session.customer === 'string' ? session.customer : session.customer?.id ?? null,
-            stripe_session_id: session.id,
-            customer_email: session.customer_details?.email ?? null,
-            flow,
-            status: session.payment_status || session.status || 'completed',
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'stripe_session_id' }
-        );
-
-      if (error) {
-        console.error('[webhook] Guest audit purchase upsert error:', error.message);
-        return NextResponse.json({ error: 'DB write failed' }, { status: 500 });
-      }
+      return handleOsirisCompleted(stripe, supabase, session);
     }
   }
 
@@ -102,7 +83,91 @@ export async function POST(req: NextRequest) {
     return handleOsirisRefund(stripe, supabase, event.data.object as Stripe.Charge);
   }
 
+  if (event.type === 'charge.dispute.created') {
+    return handleOsirisDispute(stripe, supabase, event.data.object as Stripe.Dispute);
+  }
+
   return NextResponse.json({ received: true });
+}
+
+function purchaseFacts(session: Stripe.Checkout.Session): OsirisPurchaseFacts {
+  return {
+    stripe_session_id: session.id,
+    stripe_customer_id:
+      typeof session.customer === 'string' ? session.customer : session.customer?.id ?? null,
+    customer_email: session.customer_details?.email ?? null,
+  };
+}
+
+function idOf(ref: string | { id: string } | null | undefined): string | null {
+  return typeof ref === 'string' ? ref : ref?.id ?? null;
+}
+
+function dbFailure(context: string, message: string) {
+  console.error(`[webhook] ${context}:`, message);
+  return NextResponse.json({ error: 'DB write failed' }, { status: 500 });
+}
+
+/**
+ * A paid Osiris session is recorded only when it matches the published offer
+ * (mode, USD, $149.00 total, canonical price at quantity one), the same check
+ * the intake route applies. A session that does not match is still recorded,
+ * as `needs_review` with fulfillment paused, so a real payment is never
+ * dropped silently and cannot proceed without the Operator.
+ */
+async function handleOsirisCompleted(
+  stripe: Stripe,
+  supabase: SupabaseClient,
+  session: Stripe.Checkout.Session
+) {
+  let check = checkOsirisCompletedSession(session);
+  if (check.ok) {
+    try {
+      const items = await stripe.checkout.sessions.listLineItems(session.id, { limit: 10 });
+      check = checkOsirisOffer(session, items.data, stripeEnv.STRIPE_AUDIT_PRICE_ID);
+    } catch {
+      console.error('[webhook] Could not read line items for session:', session.id);
+      return NextResponse.json({ error: 'Line item lookup failed' }, { status: 500 });
+    }
+  }
+
+  const facts = purchaseFacts(session);
+  const now = new Date().toISOString();
+
+  if (!check.ok) {
+    console.warn('[webhook] Osiris session held for review:', session.id, check.reason);
+    const ensured = await ensureOsirisPurchaseRow(supabase, facts, 'needs_review', 'paused', now);
+    if (ensured.error) return dbFailure('Review hold insert error', ensured.error.message);
+    const held = await holdOsirisCase(
+      supabase,
+      session.id,
+      'needs_review',
+      ['refunded', 'partially_refunded', 'disputed'],
+      now
+    );
+    if (held.error) return dbFailure('Review hold update error', held.error.message);
+    return NextResponse.json({ received: true, review: 'offer_mismatch', reason: check.reason });
+  }
+
+  const { error } = await recordOsirisPayment(
+    supabase,
+    facts,
+    session.payment_status || session.status || 'completed',
+    now
+  );
+  if (error) return dbFailure('Guest audit purchase upsert error', error.message);
+  return NextResponse.json({ received: true });
+}
+
+/** Finds the Osiris checkout session behind a payment intent, or null if it is not one. */
+async function findOsirisSession(
+  stripe: Stripe,
+  paymentIntent: string
+): Promise<Stripe.Checkout.Session | null> {
+  const sessions = await stripe.checkout.sessions.list({ payment_intent: paymentIntent, limit: 1 });
+  const session = sessions.data[0];
+  if (!session || session.metadata?.flow !== OSIRIS_AUDIT_V1_FLOW) return null;
+  return session;
 }
 
 /**
@@ -110,6 +175,9 @@ export async function POST(req: NextRequest) {
  * this handler a refunded session would still pass intake and fulfillment start.
  * Full refund: the case becomes `refunded`, which intake and the start RPC refuse.
  * Partial refund: an active case is paused for the operator to decide.
+ * A refund that arrives before checkout.session.completed creates the row in
+ * its refunded state, so the later payment event cannot reopen it and Stripe
+ * is not left retrying for days.
  */
 async function handleOsirisRefund(
   stripe: Stripe,
@@ -117,96 +185,72 @@ async function handleOsirisRefund(
   charge: Stripe.Charge
 ) {
   const kind = classifyRefund(charge);
-  const paymentIntent =
-    typeof charge.payment_intent === 'string'
-      ? charge.payment_intent
-      : charge.payment_intent?.id ?? null;
+  const paymentIntent = idOf(charge.payment_intent);
 
   if (kind === 'none' || !paymentIntent) {
     return NextResponse.json({ received: true, ignored: 'no_refund_or_payment_intent' });
   }
 
-  let sessionId: string;
+  let session: Stripe.Checkout.Session | null;
   try {
-    const sessions = await stripe.checkout.sessions.list({
-      payment_intent: paymentIntent,
-      limit: 1,
-    });
-    const session = sessions.data[0];
-    if (!session || session.metadata?.flow !== OSIRIS_AUDIT_V1_FLOW) {
-      return NextResponse.json({ received: true, ignored: 'not_osiris_audit' });
-    }
-    sessionId = session.id;
+    session = await findOsirisSession(stripe, paymentIntent);
   } catch {
     console.error('[webhook] Could not look up the session for a refund:', charge.id);
     return NextResponse.json({ error: 'Session lookup failed' }, { status: 500 });
   }
-
-  const { data: existing, error: readError } = await supabase
-    .from(PURCHASE_TABLE)
-    .select('fulfillment_status')
-    .eq('stripe_session_id', sessionId)
-    .maybeSingle();
-
-  if (readError) {
-    console.error('[webhook] Refund read error:', readError.message);
-    return NextResponse.json({ error: 'DB read failed' }, { status: 500 });
-  }
-
-  if (!existing) {
-    // The purchase row is written on checkout.session.completed. Ask Stripe to
-    // retry so a refund that arrives first is still applied.
-    return NextResponse.json({ error: 'Purchase not recorded yet' }, { status: 500 });
+  if (!session) {
+    return NextResponse.json({ received: true, ignored: 'not_osiris_audit' });
   }
 
   const now = new Date().toISOString();
+  const facts = purchaseFacts(session);
 
   if (kind === 'full') {
+    const ensured = await ensureOsirisPurchaseRow(supabase, facts, 'refunded', 'refunded', now);
+    if (ensured.error) return dbFailure('Refund insert error', ensured.error.message);
     // Terminal: a full refund wins over any other state, including delivered.
-    const { error } = await supabase
-      .from(PURCHASE_TABLE)
-      .update({ status: 'refunded', fulfillment_status: 'refunded', updated_at: now })
-      .eq('stripe_session_id', sessionId);
-    if (error) {
-      console.error('[webhook] Refund update error:', error.message);
-      return NextResponse.json({ error: 'DB write failed' }, { status: 500 });
-    }
+    const { error } = await markOsirisRefunded(supabase, session.id, now);
+    if (error) return dbFailure('Refund update error', error.message);
     return NextResponse.json({ received: true, refund: kind, fulfillmentStatus: 'refunded' });
   }
 
-  // Partial refund. Each write is conditional in the database, so a full refund
-  // or delivery committed after the read above is never overwritten.
-  const { data: paused, error: pauseError } = await supabase
-    .from(PURCHASE_TABLE)
-    .update({ status: 'partially_refunded', fulfillment_status: 'paused', updated_at: now })
-    .eq('stripe_session_id', sessionId)
-    .neq('status', 'refunded')
-    .in('fulfillment_status', [...OSIRIS_AUDIT_V1_PAUSABLE_STATES])
-    .select('fulfillment_status');
-  if (pauseError) {
-    console.error('[webhook] Refund update error:', pauseError.message);
-    return NextResponse.json({ error: 'DB write failed' }, { status: 500 });
-  }
-  if (paused && paused.length > 0) {
-    return NextResponse.json({ received: true, refund: kind, fulfillmentStatus: 'paused' });
+  const ensured = await ensureOsirisPurchaseRow(supabase, facts, 'partially_refunded', 'paused', now);
+  if (ensured.error) return dbFailure('Refund insert error', ensured.error.message);
+  const held = await holdOsirisCase(supabase, session.id, 'partially_refunded', ['refunded'], now);
+  if (held.error) return dbFailure('Refund update error', held.error.message);
+  return NextResponse.json({ received: true, refund: kind, fulfillmentStatus: held.fulfillmentStatus });
+}
+
+/**
+ * A dispute opened against an Osiris payment pauses an active case and marks
+ * the payment `disputed`, which the fulfillment start RPC refuses. Resolving a
+ * dispute is left to the Operator; later dispute events are not handled here.
+ */
+async function handleOsirisDispute(
+  stripe: Stripe,
+  supabase: SupabaseClient,
+  dispute: Stripe.Dispute
+) {
+  const paymentIntent = idOf(dispute.payment_intent);
+  if (!paymentIntent) {
+    return NextResponse.json({ received: true, ignored: 'no_payment_intent' });
   }
 
-  // Not in a pausable state: record the payment status only, never the fulfillment state.
-  const { data: recorded, error: recordError } = await supabase
-    .from(PURCHASE_TABLE)
-    .update({ status: 'partially_refunded', updated_at: now })
-    .eq('stripe_session_id', sessionId)
-    .neq('status', 'refunded')
-    .select('fulfillment_status');
-  if (recordError) {
-    console.error('[webhook] Refund update error:', recordError.message);
-    return NextResponse.json({ error: 'DB write failed' }, { status: 500 });
+  let session: Stripe.Checkout.Session | null;
+  try {
+    session = await findOsirisSession(stripe, paymentIntent);
+  } catch {
+    console.error('[webhook] Could not look up the session for a dispute:', dispute.id);
+    return NextResponse.json({ error: 'Session lookup failed' }, { status: 500 });
+  }
+  if (!session) {
+    return NextResponse.json({ received: true, ignored: 'not_osiris_audit' });
   }
 
-  const after = (recorded?.[0] as { fulfillment_status?: string } | undefined)?.fulfillment_status;
-  return NextResponse.json({
-    received: true,
-    refund: kind,
-    fulfillmentStatus: after ?? (existing as { fulfillment_status: string }).fulfillment_status,
-  });
+  const now = new Date().toISOString();
+  const ensured = await ensureOsirisPurchaseRow(supabase, purchaseFacts(session), 'disputed', 'paused', now);
+  if (ensured.error) return dbFailure('Dispute insert error', ensured.error.message);
+  const held = await holdOsirisCase(supabase, session.id, 'disputed', ['refunded'], now);
+  if (held.error) return dbFailure('Dispute update error', held.error.message);
+  return NextResponse.json({ received: true, dispute: 'opened', fulfillmentStatus: held.fulfillmentStatus });
 }

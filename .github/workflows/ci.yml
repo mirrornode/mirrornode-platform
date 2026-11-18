@@ -76,3 +76,32 @@ jobs:
 
       - name: Run build
         run: npm run build
+
+  db-refund-integrity:
+    name: ci/db-refund-integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # Throwaway Postgres for database-level refund, replay, ordering and
+    # concurrency checks. No hosted Supabase project is touched.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run database refund integrity tests
+        env:
+          PGURL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: bash scripts/db/test-osiris-refund-integrity.sh

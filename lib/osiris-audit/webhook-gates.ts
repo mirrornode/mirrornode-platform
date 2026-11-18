@@ -10,7 +10,7 @@ export const OSIRIS_AUDIT_V1_FLOW = 'osiris-audit-v1';
 export const OSIRIS_AUDIT_V1_AMOUNT_MINOR = 14900;
 export const OSIRIS_AUDIT_V1_CURRENCY = 'usd';
 
-/** Fulfillment states a partial refund may pause. Later states are left alone. */
+/** Fulfillment states a refund, dispute or review hold may pause. Later states are left alone. */
 export const OSIRIS_AUDIT_V1_PAUSABLE_STATES = [
   'intake_pending',
   'intake_complete',
@@ -22,12 +22,27 @@ export function expectedLivemode(secretKey: string): boolean {
   return /^(sk|rk)_live_/.test(secretKey);
 }
 
+/**
+ * Payment statuses that record money moving back, or a case held for review.
+ * A replayed payment event or an intake call must never overwrite them with
+ * Stripe's checkout `payment_status`, which stays `paid` after a refund.
+ */
+export const OSIRIS_AUDIT_V1_PROTECTED_PAYMENT_STATUSES = [
+  'refunded',
+  'partially_refunded',
+  'disputed',
+  'needs_review',
+] as const;
+
+export type OsirisSessionMismatch =
+  | 'NOT_PAYMENT_MODE'
+  | 'CURRENCY_MISMATCH'
+  | 'AMOUNT_MISMATCH'
+  | 'PRICE_MISMATCH';
+
 export type OsirisSessionCheck =
   | { ok: true }
-  | {
-      ok: false;
-      reason: 'NOT_PAYMENT_MODE' | 'CURRENCY_MISMATCH' | 'AMOUNT_MISMATCH';
-    };
+  | { ok: false; reason: OsirisSessionMismatch };
 
 type CompletedSessionFacts = {
   mode?: string | null;
@@ -50,6 +65,43 @@ export function checkOsirisCompletedSession(
   }
   if (session.amount_total !== OSIRIS_AUDIT_V1_AMOUNT_MINOR) {
     return { ok: false, reason: 'AMOUNT_MISMATCH' };
+  }
+  return { ok: true };
+}
+
+type LineItemFacts = {
+  quantity?: number | null;
+  price?: { id?: string | null } | null;
+};
+
+/**
+ * The checkout route sells one unit of the configured audit price. This is the
+ * same rule the intake route has always applied, shared so the two cannot drift.
+ */
+export function hasCanonicalAuditLineItem(
+  lineItems: readonly LineItemFacts[] | null | undefined,
+  auditPriceId: string
+): boolean {
+  return (
+    lineItems?.some(
+      (item) => item.price?.id === auditPriceId && item.quantity === 1
+    ) ?? false
+  );
+}
+
+/**
+ * Full offer check used by both the webhook and the intake route: payment mode,
+ * USD, the published total, and the canonical price at quantity one.
+ */
+export function checkOsirisOffer(
+  session: CompletedSessionFacts,
+  lineItems: readonly LineItemFacts[] | null | undefined,
+  auditPriceId: string
+): OsirisSessionCheck {
+  const facts = checkOsirisCompletedSession(session);
+  if (!facts.ok) return facts;
+  if (!hasCanonicalAuditLineItem(lineItems, auditPriceId)) {
+    return { ok: false, reason: 'PRICE_MISMATCH' };
   }
   return { ok: true };
 }

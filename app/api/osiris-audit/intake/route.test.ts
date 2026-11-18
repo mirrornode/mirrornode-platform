@@ -1,15 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createSupabaseRecorder } from '@/test-support/supabase-recorder';
 
 const mocks = vi.hoisted(() => ({
   retrieveSession: vi.fn(),
   createClient: vi.fn(),
-  upsert: vi.fn(),
-  update: vi.fn(),
-  eqSession: vi.fn(),
-  eqFulfillment: vi.fn(),
-  isIntakeNull: vi.fn(),
-  selectUpdated: vi.fn(),
 }));
+
+const db = createSupabaseRecorder();
+
+/** Upsert (insert if new), guarded payment-status update, then the intake write. */
+function queueIntakeResults(intakeRows: unknown[] = [{ stripe_session_id: 'cs_test_paid' }]) {
+  db.reset();
+  db.queue({}, {}, { data: intakeRows });
+}
 
 vi.mock('stripe', () => ({
   default: class Stripe {
@@ -59,6 +62,8 @@ function paidAuditSession(overrides: Record<string, unknown> = {}) {
   return {
     id: 'cs_test_paid',
     mode: 'payment',
+    currency: 'usd',
+    amount_total: 14900,
     customer: 'cus_test',
     customer_details: { email: 'customer@example.com' },
     metadata: { flow: 'osiris-audit-v1' },
@@ -80,31 +85,10 @@ describe('POST /api/osiris-audit/intake', () => {
   beforeEach(() => {
     mocks.retrieveSession.mockReset();
     mocks.createClient.mockReset();
-    mocks.upsert.mockReset();
-    mocks.update.mockReset();
-    mocks.eqSession.mockReset();
-    mocks.eqFulfillment.mockReset();
-    mocks.isIntakeNull.mockReset();
-    mocks.selectUpdated.mockReset();
 
     mocks.retrieveSession.mockResolvedValue(paidAuditSession());
-
-    mocks.upsert.mockResolvedValue({ error: null });
-    mocks.update.mockReturnValue({ eq: mocks.eqSession });
-    mocks.eqSession.mockReturnValue({ eq: mocks.eqFulfillment });
-    mocks.eqFulfillment.mockReturnValue({ is: mocks.isIntakeNull });
-    mocks.isIntakeNull.mockReturnValue({ select: mocks.selectUpdated });
-    mocks.selectUpdated.mockResolvedValue({
-      data: [{ stripe_session_id: 'cs_test_paid' }],
-      error: null,
-    });
-
-    mocks.createClient.mockReturnValue({
-      from: () => ({
-        upsert: mocks.upsert,
-        update: mocks.update,
-      }),
-    });
+    queueIntakeResults();
+    mocks.createClient.mockReturnValue(db.client);
   });
 
   it('returns 400 for more than five artifact links', async () => {
@@ -190,12 +174,48 @@ describe('POST /api/osiris-audit/intake', () => {
     expect(mocks.createClient).not.toHaveBeenCalled();
   });
 
-  it('returns 409 when intake is already complete or fulfillment advanced', async () => {
-    mocks.selectUpdated.mockResolvedValueOnce({ data: [], error: null });
+  it('returns 403 for a paid session whose total does not match the published offer', async () => {
+    mocks.retrieveSession.mockResolvedValueOnce(paidAuditSession({ amount_total: 100 }));
+
+    const res = await POST(request(validBody) as never);
+
+    expect(res.status).toBe(403);
+    expect(mocks.createClient).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when intake is already complete, fulfillment advanced, or the payment was refunded', async () => {
+    queueIntakeResults([]);
 
     const res = await POST(request(validBody) as never);
 
     expect(res.status).toBe(409);
+  });
+
+  it('never writes Stripe payment_status over a refunded, disputed or held purchase', async () => {
+    await POST(request(validBody) as never);
+
+    expect(db.ops[0]).toMatchObject({
+      kind: 'upsert',
+      options: { onConflict: 'stripe_session_id', ignoreDuplicates: true },
+    });
+    expect(db.ops[1]).toMatchObject({ kind: 'update', payload: { status: 'paid' } });
+    expect(db.ops[1].filters).toContainEqual([
+      'not',
+      'status',
+      'in',
+      '(refunded,partially_refunded,disputed,needs_review)',
+    ]);
+  });
+
+  it('only accepts intake for a purchase whose ledger status is still paid', async () => {
+    await POST(request(validBody) as never);
+
+    expect(db.ops[2].filters).toEqual([
+      ['eq', 'stripe_session_id', 'cs_test_paid'],
+      ['eq', 'status', 'paid'],
+      ['eq', 'fulfillment_status', 'intake_pending'],
+      ['is', 'intake_submitted_at', null],
+    ]);
   });
 
   it('reconciles payment evidence and accepts a valid canonical intake', async () => {
@@ -207,16 +227,13 @@ describe('POST /api/osiris-audit/intake', () => {
       accepted: true,
       fulfillmentStatus: 'intake_complete',
     });
-    expect(mocks.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        stripe_session_id: 'cs_test_paid',
-        customer_email: 'customer@example.com',
-        flow: 'osiris-audit-v1',
-        status: 'paid',
-      }),
-      { onConflict: 'stripe_session_id' }
-    );
-    expect(mocks.update).toHaveBeenCalledWith(
+    expect(db.ops[0].payload).toMatchObject({
+      stripe_session_id: 'cs_test_paid',
+      customer_email: 'customer@example.com',
+      flow: 'osiris-audit-v1',
+      status: 'paid',
+    });
+    expect(db.ops[2].payload).toEqual(
       expect.objectContaining({
         intake_system_summary: validBody.systemSummary,
         intake_primary_goal: validBody.primaryGoal,
@@ -230,9 +247,8 @@ describe('POST /api/osiris-audit/intake', () => {
   });
 
   it('returns 500 when purchase reconciliation fails', async () => {
-    mocks.upsert.mockResolvedValueOnce({
-      error: { message: 'database unavailable' },
-    });
+    db.reset();
+    db.queue({ error: { message: 'database unavailable' } });
 
     const res = await POST(request(validBody) as never);
 
