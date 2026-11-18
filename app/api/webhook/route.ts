@@ -159,30 +159,54 @@ async function handleOsirisRefund(
     return NextResponse.json({ error: 'Purchase not recorded yet' }, { status: 500 });
   }
 
-  const currentState = (existing as { fulfillment_status: string }).fulfillment_status;
-  const update: Record<string, string> = {
-    status: kind === 'full' ? 'refunded' : 'partially_refunded',
-    updated_at: new Date().toISOString(),
-  };
+  const now = new Date().toISOString();
+
   if (kind === 'full') {
-    update.fulfillment_status = 'refunded';
-  } else if ((OSIRIS_AUDIT_V1_PAUSABLE_STATES as readonly string[]).includes(currentState)) {
-    update.fulfillment_status = 'paused';
+    // Terminal: a full refund wins over any other state, including delivered.
+    const { error } = await supabase
+      .from(PURCHASE_TABLE)
+      .update({ status: 'refunded', fulfillment_status: 'refunded', updated_at: now })
+      .eq('stripe_session_id', sessionId);
+    if (error) {
+      console.error('[webhook] Refund update error:', error.message);
+      return NextResponse.json({ error: 'DB write failed' }, { status: 500 });
+    }
+    return NextResponse.json({ received: true, refund: kind, fulfillmentStatus: 'refunded' });
   }
 
-  const { error: updateError } = await supabase
+  // Partial refund. Each write is conditional in the database, so a full refund
+  // or delivery committed after the read above is never overwritten.
+  const { data: paused, error: pauseError } = await supabase
     .from(PURCHASE_TABLE)
-    .update(update)
-    .eq('stripe_session_id', sessionId);
+    .update({ status: 'partially_refunded', fulfillment_status: 'paused', updated_at: now })
+    .eq('stripe_session_id', sessionId)
+    .neq('status', 'refunded')
+    .in('fulfillment_status', [...OSIRIS_AUDIT_V1_PAUSABLE_STATES])
+    .select('fulfillment_status');
+  if (pauseError) {
+    console.error('[webhook] Refund update error:', pauseError.message);
+    return NextResponse.json({ error: 'DB write failed' }, { status: 500 });
+  }
+  if (paused && paused.length > 0) {
+    return NextResponse.json({ received: true, refund: kind, fulfillmentStatus: 'paused' });
+  }
 
-  if (updateError) {
-    console.error('[webhook] Refund update error:', updateError.message);
+  // Not in a pausable state: record the payment status only, never the fulfillment state.
+  const { data: recorded, error: recordError } = await supabase
+    .from(PURCHASE_TABLE)
+    .update({ status: 'partially_refunded', updated_at: now })
+    .eq('stripe_session_id', sessionId)
+    .neq('status', 'refunded')
+    .select('fulfillment_status');
+  if (recordError) {
+    console.error('[webhook] Refund update error:', recordError.message);
     return NextResponse.json({ error: 'DB write failed' }, { status: 500 });
   }
 
+  const after = (recorded?.[0] as { fulfillment_status?: string } | undefined)?.fulfillment_status;
   return NextResponse.json({
     received: true,
     refund: kind,
-    fulfillmentStatus: update.fulfillment_status ?? currentState,
+    fulfillmentStatus: after ?? (existing as { fulfillment_status: string }).fulfillment_status,
   });
 }

@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type UpdateBuilder = {
+  chain: Array<[string, ...unknown[]]>;
+  eq: (...a: unknown[]) => UpdateBuilder;
+  neq: (...a: unknown[]) => UpdateBuilder;
+  in: (...a: unknown[]) => UpdateBuilder;
+  select: (...a: unknown[]) => Promise<unknown>;
+  then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) => Promise<unknown>;
+};
+
 const mocks = vi.hoisted(() => ({
   constructEvent: vi.fn(),
   listSessions: vi.fn(),
@@ -8,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   upsert: vi.fn(),
   maybeSingle: vi.fn(),
   update: vi.fn(),
-  updateEq: vi.fn(),
+  builders: [] as UpdateBuilder[],
   secretKey: { value: 'sk_test_synthetic' },
 }));
 
@@ -87,6 +96,20 @@ function refundEvent(amountRefunded: number, livemode = false) {
   };
 }
 
+/** A chainable stand-in for supabase's update().eq().neq().in().select(). */
+function updateBuilder(selectRows: unknown[] = [{ fulfillment_status: 'paused' }]): UpdateBuilder {
+  const b = { chain: [] } as unknown as UpdateBuilder;
+  for (const m of ['eq', 'neq', 'in'] as const) {
+    b[m] = (...a: unknown[]) => {
+      b.chain.push([m, ...a]);
+      return b;
+    };
+  }
+  b.select = () => Promise.resolve({ data: selectRows, error: null });
+  b.then = (resolve, reject) => Promise.resolve({ error: null }).then(resolve, reject);
+  return b;
+}
+
 function osirisSessionList() {
   return { data: [{ id: 'cs_test_synthetic', metadata: { flow: 'osiris-audit-v1' } }] };
 }
@@ -119,8 +142,12 @@ describe('POST /api/webhook', () => {
     mocks.secretKey.value = 'sk_test_synthetic';
     mocks.upsert.mockResolvedValue({ error: null });
     mocks.maybeSingle.mockResolvedValue({ data: { fulfillment_status: 'intake_complete' }, error: null });
-    mocks.updateEq.mockResolvedValue({ error: null });
-    mocks.update.mockReturnValue({ eq: mocks.updateEq });
+    mocks.builders = [];
+    mocks.update.mockImplementation(() => {
+      const b = updateBuilder();
+      mocks.builders.push(b);
+      return b;
+    });
     mocks.from.mockReturnValue({
       upsert: mocks.upsert,
       select: () => ({ eq: () => ({ maybeSingle: mocks.maybeSingle }) }),
@@ -178,7 +205,7 @@ describe('POST /api/webhook', () => {
     expect(await res.json()).toMatchObject({ refund: 'full', fulfillmentStatus: 'refunded' });
     expect(mocks.listSessions).toHaveBeenCalledWith({ payment_intent: 'pi_synthetic', limit: 1 });
     expect(mocks.update.mock.calls[0][0]).toMatchObject({ status: 'refunded', fulfillment_status: 'refunded' });
-    expect(mocks.updateEq).toHaveBeenCalledWith('stripe_session_id', 'cs_test_synthetic');
+    expect(mocks.builders[0].chain).toEqual([['eq', 'stripe_session_id', 'cs_test_synthetic']]);
   });
 
   it('marks a delivered case refunded on a full refund', async () => {
@@ -193,14 +220,42 @@ describe('POST /api/webhook', () => {
     const res = await POST(request());
     expect(await res.json()).toMatchObject({ refund: 'partial', fulfillmentStatus: 'paused' });
     expect(mocks.update.mock.calls[0][0]).toMatchObject({ status: 'partially_refunded', fulfillment_status: 'paused' });
+    expect(mocks.builders[0].chain).toEqual([
+      ['eq', 'stripe_session_id', 'cs_test_synthetic'],
+      ['neq', 'status', 'refunded'],
+      ['in', 'fulfillment_status', ['intake_pending', 'intake_complete', 'fulfillment_started']],
+    ]);
+  });
+
+  it('never overwrites a state that changed after the read (race with a full refund or delivery)', async () => {
+    // The read still says intake_complete, but the guarded writes match no row.
+    mocks.update.mockImplementation(() => {
+      const b = updateBuilder([]);
+      mocks.builders.push(b);
+      return b;
+    });
+    mocks.constructEvent.mockReturnValue(refundEvent(5000));
+    const res = await POST(request());
+    expect(res.status).toBe(200);
+    for (const [i, call] of mocks.update.mock.calls.entries()) {
+      const guarded = mocks.builders[i].chain.some(([m]) => m === 'in');
+      expect(guarded || !('fulfillment_status' in (call[0] as object))).toBe(true);
+      expect(mocks.builders[i].chain).toContainEqual(['neq', 'status', 'refunded']);
+    }
   });
 
   it('records a partial refund on a delivered case without changing its state', async () => {
     mocks.maybeSingle.mockResolvedValue({ data: { fulfillment_status: 'delivered' }, error: null });
+    const queued = [updateBuilder([]), updateBuilder([{ fulfillment_status: 'delivered' }])];
+    mocks.update.mockImplementation(() => {
+      const b = queued.shift()!;
+      mocks.builders.push(b);
+      return b;
+    });
     mocks.constructEvent.mockReturnValue(refundEvent(5000));
     const res = await POST(request());
     expect(await res.json()).toMatchObject({ refund: 'partial', fulfillmentStatus: 'delivered' });
-    expect(mocks.update.mock.calls[0][0]).not.toHaveProperty('fulfillment_status');
+    expect(mocks.update.mock.calls[1][0]).not.toHaveProperty('fulfillment_status');
   });
 
   it('asks Stripe to retry when the refund arrives before the purchase row', async () => {
