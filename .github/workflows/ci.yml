@@ -81,6 +81,8 @@ jobs:
     name: ci/db-refund-integrity
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
 
     # Throwaway Postgres for database-level refund, replay, ordering and
     # concurrency checks. No hosted Supabase project is touched.
