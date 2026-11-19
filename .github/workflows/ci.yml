@@ -107,3 +107,7 @@ jobs:
         env:
           PGURL: postgresql://postgres:postgres@localhost:5432/postgres
         run: bash scripts/db/test-osiris-refund-integrity.sh
+      - name: Run database delivery integrity tests
+        env:
+          PGURL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: bash scripts/db/test-osiris-delivery-integrity.sh
