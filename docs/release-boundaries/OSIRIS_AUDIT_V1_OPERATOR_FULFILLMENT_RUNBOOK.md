@@ -104,14 +104,18 @@ Procedure:
 
 Stripe remains the source of truth for the monetary refund itself.
 
-## 5. Deliver
+## 5. Review, then deliver
 
-Only after the audit artifact has actually been sent to the customer contact recorded for the purchase:
+Quality review comes first. When the audit artifact is final:
 
-- set `fulfillment_status = delivered`
-- set `delivered_at` to the current time
+- compute its sha256 digest (`sha256:<64 hex>`);
+- record the review with `record_osiris_audit_review_v1(session, digest, 'PASS' or 'FAIL', reviewer_id, new uuid)`. A later review replaces an earlier one until delivery. Pausing the case voids the review.
 
-Do not mark `delivered` for a draft, internal review copy, or planned send.
+Only after the artifact with that exact digest has actually been sent to the customer contact recorded for the purchase:
+
+- record delivery with `deliver_osiris_audit_v1(session, digest, operator_id, idempotency uuid, event uuid)`. It sets `fulfillment_status = delivered` and `delivered_at`, once, and only when the latest review is PASS for the same digest.
+
+Do not set `delivered` by direct SQL: the database refuses it (migration `20261119150000`). Do not record delivery for a draft, internal review copy, or planned send.
 
 ## 6. Minimum Operator case view
 
@@ -125,7 +129,8 @@ For each case, the Operator must be able to identify:
 - start receipt: `fulfillment_start_event_id`, `fulfillment_start_idempotency_key`, `fulfillment_started_by`, `fulfillment_start_reason`
 - review checkpoint: `operator_reviewed_at`
 - work started: `fulfillment_started_at`
-- work completed: `delivered_at`
+- quality review: `delivery_review_verdict`, `delivery_review_artifact_digest`, `delivery_reviewed_by`, `delivery_reviewed_at`
+- work completed: `delivered_at`, `delivered_artifact_digest`, `delivered_by`
 
 ## 7. First-dollar boundary
 
