@@ -43,8 +43,8 @@ import {
 
 const db = createSupabaseRecorder();
 const PROTECTED = '(refunded,partially_refunded,needs_review)';
-const OPEN_DISPUTE_GUARD =
-  'dispute_status.is.null,dispute_status.not.in.(won,lost,warning_closed,prevented),dispute_id.is.null,dispute_id.neq.dp_synthetic';
+const DISPUTE_GUARD =
+  'dispute_id.is.null,and(dispute_id.eq.dp_synthetic,dispute_status.not.in.(won,lost,warning_closed,prevented)),and(dispute_id.neq.dp_synthetic,dispute_status.in.(won,warning_closed))';
 const PAUSABLE = ['intake_pending', 'intake_complete', 'fulfillment_started'];
 
 function request() {
@@ -369,7 +369,7 @@ describe('POST /api/webhook', () => {
         updated_at: expect.any(String),
       });
       expect(db.ops[1].payload).not.toHaveProperty('status');
-      expect(db.ops[1].filters).toContainEqual(['or', OPEN_DISPUTE_GUARD]);
+      expect(db.ops[1].filters).toContainEqual(['or', DISPUTE_GUARD]);
       expect(db.ops[1].filters).toContainEqual(['in', 'fulfillment_status', ['intake_pending', 'intake_complete', 'fulfillment_started']]);
     });
 
@@ -380,7 +380,7 @@ describe('POST /api/webhook', () => {
       expect(await res.json()).toMatchObject({ dispute: 'open', fulfillmentStatus: 'paused' });
       expect(db.ops).toHaveLength(3);
       expect(db.ops[2].payload).toEqual({ dispute_id: 'dp_synthetic', dispute_status: 'needs_response', updated_at: expect.any(String) });
-      expect(db.ops[2].filters).toContainEqual(['or', OPEN_DISPUTE_GUARD]);
+      expect(db.ops[2].filters).toContainEqual(['or', DISPUTE_GUARD]);
     });
 
     it.each(['charge.dispute.created', 'charge.dispute.updated'])(
@@ -391,7 +391,7 @@ describe('POST /api/webhook', () => {
         const res = await POST(request());
         expect(res.status).toBe(200);
         expect(await res.json()).toMatchObject({ dispute: 'open', fulfillmentStatus: null });
-        for (const op of db.ops.slice(1)) expect(op.filters).toContainEqual(['or', OPEN_DISPUTE_GUARD]);
+        for (const op of db.ops.slice(1)) expect(op.filters).toContainEqual(['or', DISPUTE_GUARD]);
       }
     );
 
@@ -404,7 +404,10 @@ describe('POST /api/webhook', () => {
         expect(await res.json()).toMatchObject({ dispute: 'closed', disputeStatus: status, fulfillmentStatus: 'paused' });
         expect(db.ops).toHaveLength(2);
         expect(db.ops[1].payload).toEqual({ dispute_id: 'dp_synthetic', dispute_status: status, updated_at: expect.any(String) });
-        expect(db.ops[1].filters).toEqual([['eq', 'stripe_session_id', 'cs_test_synthetic']]);
+        expect(db.ops[1].filters).toEqual([
+          ['eq', 'stripe_session_id', 'cs_test_synthetic'],
+          ['or', DISPUTE_GUARD],
+        ]);
       }
     );
 
@@ -422,9 +425,32 @@ describe('POST /api/webhook', () => {
           updated_at: expect.any(String),
         });
         expect(db.ops[1].filters).toContainEqual(['in', 'fulfillment_status', ['intake_pending', 'intake_complete', 'fulfillment_started']]);
+        expect(db.ops[1].filters).toContainEqual(['or', DISPUTE_GUARD]);
         expect(db.ops[1].payload).not.toHaveProperty('status');
       }
     );
+
+    it.each(['won', 'warning_closed', 'lost'])(
+      'a redelivered %s event for an older dispute carries the identity guard on every write, so it cannot replace a newer open dispute',
+      async (status) => {
+        db.queue({}, { data: [] }, { data: [] });
+        mocks.constructEvent.mockReturnValue(disputeEvent('pi_synthetic', 'charge.dispute.closed', status));
+        const res = await POST(request());
+        expect(res.status).toBe(200);
+        expect(await res.json()).toMatchObject({ dispute: 'closed', fulfillmentStatus: null });
+        expect(db.ops.length).toBeGreaterThan(1);
+        for (const op of db.ops.slice(1)) expect(op.filters).toContainEqual(['or', DISPUTE_GUARD]);
+      }
+    );
+
+    it('refuses a malformed dispute id on a closed event too', async () => {
+      db.queue({});
+      mocks.constructEvent.mockReturnValue(
+        disputeEvent('pi_synthetic', 'charge.dispute.closed', 'won', 'dp_x),dispute_id.is.null,(')
+      );
+      expect((await POST(request())).status).toBe(500);
+      expect(db.ops).toHaveLength(1);
+    });
 
     it('records a lost dispute on a delivered or refunded case without touching its fulfillment', async () => {
       db.queue({}, { data: [] }, { data: [{ fulfillment_status: 'refunded' }] });

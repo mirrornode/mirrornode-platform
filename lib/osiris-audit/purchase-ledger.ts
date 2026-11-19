@@ -11,6 +11,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  OSIRIS_AUDIT_V1_CLEARED_DISPUTE_STATUSES,
   OSIRIS_AUDIT_V1_CLOSED_DISPUTE_STATUSES,
   OSIRIS_AUDIT_V1_FLOW,
   OSIRIS_AUDIT_V1_PAUSABLE_STATES,
@@ -152,45 +153,56 @@ export type OsirisDisputeFacts = {
 const STRIPE_ID = /^[A-Za-z0-9_]+$/;
 
 /**
- * PostgREST `or` filter for an open-dispute write: no dispute recorded yet, a
- * dispute that is still open, or a different dispute. Only a closed status of
- * the same dispute blocks the write, so a replayed or late `created` or
- * `updated` event can never reopen a dispute that Stripe has closed.
+ * PostgREST `or` filter that every dispute write carries. A write for dispute
+ * `disputeId` goes through only when the row has:
+ *   - no dispute recorded yet, or
+ *   - this same dispute, still open (a closed status is final), or
+ *   - a different dispute that closed in the merchant's favour (won, inquiry
+ *     closed), so a later chargeback after a closed inquiry is recorded.
+ * It never replaces an open, lost or prevented dispute with a different one.
+ * So a late or redelivered event for an older dispute can never hide a newer
+ * open dispute, and a closed status can never be reopened.
  */
-function disputeNotClosed(disputeId: string): string {
+function disputeWriteAllowed(disputeId: string): string {
+  const closed = inList(OSIRIS_AUDIT_V1_CLOSED_DISPUTE_STATUSES);
+  const cleared = inList(OSIRIS_AUDIT_V1_CLEARED_DISPUTE_STATUSES);
   return [
-    'dispute_status.is.null',
-    `dispute_status.not.in.${inList(OSIRIS_AUDIT_V1_CLOSED_DISPUTE_STATUSES)}`,
     'dispute_id.is.null',
-    `dispute_id.neq.${disputeId}`,
+    `and(dispute_id.eq.${disputeId},dispute_status.not.in.${closed})`,
+    `and(dispute_id.neq.${disputeId},dispute_status.in.${cleared})`,
   ].join(',');
 }
 
+type DisputeWriteResult = { error: DbError; fulfillmentStatus: string | null };
+
 /**
- * Records an open dispute in `dispute_status`, separately from the refund
- * state in `status`, and pauses an active case. Never overwrites a closed
- * status of the same dispute, so a late `created` or `updated` event cannot
- * reopen it.
+ * One guarded dispute write: pause an active case if `pause`, else (or if no
+ * active case matched) record the dispute fields only. Both statements carry
+ * the same dispute guard, so a concurrent change is re-checked after any lock.
  */
-export async function recordOsirisDisputeOpen(
+async function writeOsirisDispute(
   supabase: SupabaseClient,
   sessionId: string,
   dispute: OsirisDisputeFacts,
+  pause: boolean,
   now: string
-): Promise<{ error: DbError; fulfillmentStatus: string | null }> {
+): Promise<DisputeWriteResult> {
   if (!STRIPE_ID.test(dispute.dispute_id)) {
     return { error: { message: 'Unexpected dispute id format' }, fulfillmentStatus: null };
   }
-  const guard = disputeNotClosed(dispute.dispute_id);
-  const { data: paused, error: pauseError } = await supabase
-    .from(PURCHASE_TABLE)
-    .update({ ...dispute, fulfillment_status: 'paused', updated_at: now })
-    .eq('stripe_session_id', sessionId)
-    .or(guard)
-    .in('fulfillment_status', [...OSIRIS_AUDIT_V1_PAUSABLE_STATES])
-    .select('fulfillment_status');
-  if (pauseError) return { error: pauseError, fulfillmentStatus: null };
-  if (paused && paused.length > 0) return { error: null, fulfillmentStatus: 'paused' };
+  const guard = disputeWriteAllowed(dispute.dispute_id);
+
+  if (pause) {
+    const { data: paused, error: pauseError } = await supabase
+      .from(PURCHASE_TABLE)
+      .update({ ...dispute, fulfillment_status: 'paused', updated_at: now })
+      .eq('stripe_session_id', sessionId)
+      .or(guard)
+      .in('fulfillment_status', [...OSIRIS_AUDIT_V1_PAUSABLE_STATES])
+      .select('fulfillment_status');
+    if (pauseError) return { error: pauseError, fulfillmentStatus: null };
+    if (paused && paused.length > 0) return { error: null, fulfillmentStatus: 'paused' };
+  }
 
   const { data: recorded, error: recordError } = await supabase
     .from(PURCHASE_TABLE)
@@ -205,35 +217,36 @@ export async function recordOsirisDisputeOpen(
 }
 
 /**
- * Records a closed dispute. A closed status is final in Stripe, so the dispute
- * fields are written unconditionally. A dispute closed in the merchant's
- * favour (won, inquiry closed) never changes fulfillment: a paused case stays
- * paused until the Operator decides. A lost or prevented dispute also pauses an
- * active case, in case its earlier open event never arrived.
+ * Records an open dispute in `dispute_status`, separately from the refund
+ * state in `status`, and pauses an active case.
+ */
+export async function recordOsirisDisputeOpen(
+  supabase: SupabaseClient,
+  sessionId: string,
+  dispute: OsirisDisputeFacts,
+  now: string
+): Promise<DisputeWriteResult> {
+  return writeOsirisDispute(supabase, sessionId, dispute, true, now);
+}
+
+/**
+ * Records a closed dispute, under the same dispute guard as an open one. A
+ * dispute closed in the merchant's favour (won, inquiry closed) never changes
+ * fulfillment: a paused case stays paused until the Operator decides. A lost
+ * or prevented dispute also pauses an active case, in case its earlier open
+ * event never arrived.
  */
 export async function recordOsirisDisputeClosed(
   supabase: SupabaseClient,
   sessionId: string,
   dispute: OsirisDisputeFacts,
   now: string
-): Promise<{ error: DbError; fulfillmentStatus: string | null }> {
-  if (!isDisputeCleared(dispute.dispute_status)) {
-    const { data: paused, error: pauseError } = await supabase
-      .from(PURCHASE_TABLE)
-      .update({ ...dispute, fulfillment_status: 'paused', updated_at: now })
-      .eq('stripe_session_id', sessionId)
-      .in('fulfillment_status', [...OSIRIS_AUDIT_V1_PAUSABLE_STATES])
-      .select('fulfillment_status');
-    if (pauseError) return { error: pauseError, fulfillmentStatus: null };
-    if (paused && paused.length > 0) return { error: null, fulfillmentStatus: 'paused' };
-  }
-
-  const { data, error } = await supabase
-    .from(PURCHASE_TABLE)
-    .update({ ...dispute, updated_at: now })
-    .eq('stripe_session_id', sessionId)
-    .select('fulfillment_status');
-  if (error) return { error, fulfillmentStatus: null };
-  const after = (data?.[0] as { fulfillment_status?: string } | undefined)?.fulfillment_status;
-  return { error: null, fulfillmentStatus: after ?? null };
+): Promise<DisputeWriteResult> {
+  return writeOsirisDispute(
+    supabase,
+    sessionId,
+    dispute,
+    !isDisputeCleared(dispute.dispute_status),
+    now
+  );
 }

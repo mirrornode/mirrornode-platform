@@ -16,8 +16,11 @@
 --
 -- Rules added:
 --   * Trigger: a closed status of a dispute (won, lost, warning_closed,
---     prevented) is never replaced for the same dispute_id. A late or replayed
---     open event therefore cannot reopen it. A different dispute_id is allowed.
+--     prevented) is never replaced for the same dispute_id, so a late or
+--     replayed open event cannot reopen it. A different dispute_id replaces
+--     the recorded one only when that one closed in the merchant's favour
+--     (won, warning_closed), so a late event for an older dispute cannot hide
+--     a newer open, lost or prevented one.
 --   * Fulfillment start RPC: refuses a case whose dispute is open, lost or
 --     prevented. Only no dispute, 'won' or 'warning_closed' can start.
 -- The existing refund rules in the trigger are unchanged. Payment status
@@ -53,9 +56,23 @@ begin
     new.fulfillment_status := 'refunded';
   end if;
 
-  -- A closed dispute stays closed for the same dispute id.
-  if old.dispute_status in ('won', 'lost', 'warning_closed', 'prevented')
-     and (new.dispute_id is null or new.dispute_id = old.dispute_id) then
+  -- Dispute state. Keep the recorded dispute when:
+  --   * it is closed, and the write is for the same dispute (a closed status
+  --     is final), or
+  --   * the write is for a different dispute and the recorded one is still
+  --     open, lost or prevented. Only a dispute closed in the merchant's
+  --     favour (won, warning_closed) may be replaced by a different dispute.
+  -- So a late or redelivered event for an older dispute cannot hide a newer
+  -- open one, and a closed dispute cannot be reopened.
+  if old.dispute_id is not null
+     and (
+       (old.dispute_status in ('won', 'lost', 'warning_closed', 'prevented')
+        and (new.dispute_id is null or new.dispute_id = old.dispute_id))
+       or
+       (new.dispute_id is not null
+        and new.dispute_id <> old.dispute_id
+        and coalesce(old.dispute_status, '') not in ('won', 'warning_closed'))
+     ) then
     new.dispute_id := old.dispute_id;
     new.dispute_status := old.dispute_status;
   end if;

@@ -134,46 +134,44 @@ create or replace function t.partial_refund(p_id text) returns text language sql
   select t.hold(p_id, 'partially_refunded', array['refunded']);
 \$\$;
 
--- recordOsirisDisputeOpen: same or() guard, conditional pause, else conditional record
-create or replace function t.dispute_open(p_id text, p_did text, p_dstatus text) returns text language plpgsql as \$\$
+-- The dispute guard every dispute write carries (disputeWriteAllowed): no
+-- dispute yet; or this dispute, still open; or a different dispute that closed
+-- in the merchant's favour.
+create or replace function t.dispute_allowed(p_row public.guest_audit_purchases, p_did text) returns boolean
+language sql immutable as \$\$
+  select p_row.dispute_id is null
+      or (p_row.dispute_id = p_did and p_row.dispute_status not in ('won','lost','warning_closed','prevented'))
+      or (p_row.dispute_id <> p_did and p_row.dispute_status in ('won','warning_closed'));
+\$\$;
+
+-- writeOsirisDispute: optional guarded pause, else guarded record
+create or replace function t.dispute_write(p_id text, p_did text, p_dstatus text, p_pause boolean) returns text language plpgsql as \$\$
 declare v text;
 begin
-  update public.guest_audit_purchases
-  set dispute_id = p_did, dispute_status = p_dstatus, fulfillment_status = 'paused', updated_at = now()
-  where stripe_session_id = p_id
-    and (dispute_status is null or dispute_status not in ('won','lost','warning_closed','prevented')
-         or dispute_id is null or dispute_id <> p_did)
-    and fulfillment_status in ('intake_pending','intake_complete','fulfillment_started')
-  returning fulfillment_status into v;
-  if found then return v; end if;
-  update public.guest_audit_purchases
+  if p_pause then
+    update public.guest_audit_purchases g
+    set dispute_id = p_did, dispute_status = p_dstatus, fulfillment_status = 'paused', updated_at = now()
+    where g.stripe_session_id = p_id and t.dispute_allowed(g, p_did)
+      and g.fulfillment_status in ('intake_pending','intake_complete','fulfillment_started')
+    returning g.fulfillment_status into v;
+    if found then return v; end if;
+  end if;
+  update public.guest_audit_purchases g
   set dispute_id = p_did, dispute_status = p_dstatus, updated_at = now()
-  where stripe_session_id = p_id
-    and (dispute_status is null or dispute_status not in ('won','lost','warning_closed','prevented')
-         or dispute_id is null or dispute_id <> p_did)
-  returning fulfillment_status into v;
+  where g.stripe_session_id = p_id and t.dispute_allowed(g, p_did)
+  returning g.fulfillment_status into v;
   return v;
 end \$\$;
 
--- recordOsirisDisputeClosed: unconditional dispute fields; lost or prevented
--- also pauses an active case; won or inquiry closed never touches fulfillment
-create or replace function t.dispute_closed(p_id text, p_did text, p_dstatus text) returns text language plpgsql as \$\$
-declare v text;
-begin
-  if p_dstatus not in ('won','warning_closed') then
-    update public.guest_audit_purchases
-    set dispute_id = p_did, dispute_status = p_dstatus, fulfillment_status = 'paused', updated_at = now()
-    where stripe_session_id = p_id
-      and fulfillment_status in ('intake_pending','intake_complete','fulfillment_started')
-    returning fulfillment_status into v;
-    if found then return v; end if;
-  end if;
-  update public.guest_audit_purchases
-  set dispute_id = p_did, dispute_status = p_dstatus, updated_at = now()
-  where stripe_session_id = p_id
-  returning fulfillment_status into v;
-  return v;
-end \$\$;
+-- recordOsirisDisputeOpen: always pauses an active case
+create or replace function t.dispute_open(p_id text, p_did text, p_dstatus text) returns text language sql as \$\$
+  select t.dispute_write(p_id, p_did, p_dstatus, true);
+\$\$;
+
+-- recordOsirisDisputeClosed: lost or prevented pauses; won or inquiry closed never touches fulfillment
+create or replace function t.dispute_closed(p_id text, p_did text, p_dstatus text) returns text language sql as \$\$
+  select t.dispute_write(p_id, p_did, p_dstatus, p_dstatus not in ('won','warning_closed'));
+\$\$;
 
 -- webhook handleOsirisDispute: ensure the row (paid, paused, dispute), then open or closed write
 create or replace function t.dispute_event(p_id text, p_did text, p_dstatus text) returns text language plpgsql as \$\$
@@ -297,6 +295,31 @@ run_scenarios() {
   q "select t.dispute_event('${P}_inq', 'dp_i2', 'needs_response');" >/dev/null
   check "a new dispute on the same payment after a closed inquiry is recorded" "$(q "select dispute_id || '/' || dispute_status from public.guest_audit_purchases where stripe_session_id = '${P}_inq'")" "dp_i2/needs_response"
 
+  echo " Older dispute events after a newer dispute (re-review at 57f5a65)"
+  q "select t.record_payment('${P}_ord', 'paid'); select t.intake('${P}_ord');
+     select t.dispute_event('${P}_ord', 'dp_inq', 'warning_needs_response');
+     select t.dispute_event('${P}_ord', 'dp_inq', 'warning_closed');
+     select t.dispute_event('${P}_ord', 'dp_cb', 'needs_response');
+     select t.dispute_event('${P}_ord', 'dp_inq', 'warning_closed');" >/dev/null
+  check "inquiry open, closed, chargeback open, redelivered inquiry close: chargeback kept" "$(q "select dispute_id || '/' || dispute_status || '/' || fulfillment_status from public.guest_audit_purchases where stripe_session_id = '${P}_ord'")" "dp_cb/needs_response/paused"
+  q "select t.dispute_event('${P}_ord', 'dp_inq', 'warning_needs_response');" >/dev/null
+  check "a redelivered inquiry open event does not replace the chargeback either" "$(q "select dispute_id || '/' || dispute_status from public.guest_audit_purchases where stripe_session_id = '${P}_ord'")" "dp_cb/needs_response"
+  operator_unpause "${P}_ord" intake_complete
+  check "after an un-pause, start is still refused while the chargeback is open" "$(start_case ${P}_ord)" "NOT_READY"
+  operator_unpause "${P}_ord" intake_pending
+  q "update public.guest_audit_purchases set intake_submitted_at = null where stripe_session_id = '${P}_ord'" >/dev/null
+  check "after an un-pause, intake is still refused while the chargeback is open" "$(q "select t.intake('${P}_ord')")" "0"
+
+  q "select t.record_payment('${P}_lost2', 'paid');
+     select t.dispute_event('${P}_lost2', 'dp_l1', 'lost');
+     select t.dispute_event('${P}_lost2', 'dp_l2', 'won');" >/dev/null
+  check "a lost dispute is not replaced by a different dispute's win" "$(q "select dispute_id || '/' || dispute_status from public.guest_audit_purchases where stripe_session_id = '${P}_lost2'")" "dp_l1/lost"
+
+  q "select t.record_payment('${P}_cbl', 'paid'); select t.intake('${P}_cbl');
+     select t.dispute_event('${P}_cbl', 'dp_inq', 'warning_closed');
+     select t.dispute_event('${P}_cbl', 'dp_cb', 'lost');" >/dev/null
+  check "a chargeback lost after a closed inquiry is recorded and pauses the case" "$(q "select dispute_id || '/' || dispute_status || '/' || fulfillment_status from public.guest_audit_purchases where stripe_session_id = '${P}_cbl'")" "dp_cb/lost/paused"
+
   q "select t.record_payment('${P}_open', 'paid'); select t.intake('${P}_open'); select t.dispute_event('${P}_open', 'dp_o', 'needs_response');" >/dev/null
   operator_unpause "${P}_open" intake_complete
   check "open dispute: start refused even after an un-pause" "$(start_case ${P}_open)" "NOT_READY"
@@ -315,14 +338,17 @@ run_controls() {
   q "select t.legacy_upsert_paid('${P}_lg1'); select t.mark_refunded('${P}_lg1'); select t.legacy_upsert_paid('${P}_lg1');" >/dev/null
   q "select t.record_payment('${P}_lg2', 'paid'); select t.partial_refund('${P}_lg2'); select t.legacy_upsert_paid('${P}_lg2');" >/dev/null
   q "select t.record_payment('${P}_lg3', 'paid'); select t.dispute_event('${P}_lg3', 'dp_g', 'lost'); select t.unguarded_dispute('${P}_lg3', 'dp_g', 'needs_response');" >/dev/null
+  q "select t.record_payment('${P}_lg4', 'paid'); select t.dispute_event('${P}_lg4', 'dp_inq', 'warning_closed'); select t.dispute_event('${P}_lg4', 'dp_cb', 'needs_response'); select t.unguarded_dispute('${P}_lg4', 'dp_inq', 'warning_closed');" >/dev/null
   if [[ "$mode" == "reopened" ]]; then
     check "control: pre-fix upsert reopens a full refund without the rule" "$(state ${P}_lg1)" "paid/refunded/-"
     check "control: pre-fix upsert reopens a partial refund without the rule" "$(state ${P}_lg2)" "paid/paused/-"
     check "control: unguarded write reopens a lost dispute without the rule" "$(state ${P}_lg3)" "paid/paused/needs_response"
+    check "control: unguarded older-inquiry close hides an open chargeback without the rule" "$(state ${P}_lg4)" "paid/paused/warning_closed"
   else
     check "rule keeps a full refund against the pre-fix upsert" "$(state ${P}_lg1)" "refunded/refunded/-"
     check "rule keeps a partial refund against the pre-fix upsert" "$(state ${P}_lg2)" "partially_refunded/paused/-"
     check "rule keeps a lost dispute against an unguarded write" "$(state ${P}_lg3)" "paid/paused/lost"
+    check "rule keeps an open chargeback against an unguarded older-inquiry close" "$(state ${P}_lg4)" "paid/paused/needs_response"
   fi
 }
 
@@ -387,6 +413,14 @@ run_races() {
   psql "$TEST_URL" -qtAX -c "select t.dispute_event('${P}_r6', 'dp_r6', 'under_review')" >/dev/null
   wait $A
   check "late open event queued behind a win does not reopen the dispute" "$(state ${P}_r6)" "paid/paused/won"
+
+  # A chargeback holds the lock while a redelivered close for the older inquiry arrives.
+  q "select t.record_payment('${P}_r8', 'paid'); select t.dispute_event('${P}_r8', 'dp_inq', 'warning_needs_response'); select t.dispute_event('${P}_r8', 'dp_inq', 'warning_closed');" >/dev/null
+  hold_lock "select t.dispute_event('${P}_r8', 'dp_cb', 'needs_response')"; A=$!
+  sleep 0.4
+  psql "$TEST_URL" -qtAX -c "select t.dispute_event('${P}_r8', 'dp_inq', 'warning_closed')" >/dev/null
+  wait $A
+  check "redelivered inquiry close queued behind a chargeback does not hide it" "$(q "select dispute_id || '/' || dispute_status from public.guest_audit_purchases where stripe_session_id = '${P}_r8'")" "dp_cb/needs_response"
 
   # The fulfillment start RPC racing an open dispute.
   q "select t.record_payment('${P}_r7', 'paid'); select t.intake('${P}_r7');" >/dev/null

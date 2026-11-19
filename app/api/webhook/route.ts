@@ -237,8 +237,9 @@ async function handleOsirisRefund(
  * case; the fulfillment start RPC also refuses a case with an open or lost
  * dispute. A closed dispute is recorded but never unpauses the case: resuming
  * is the Operator's decision. A lost or prevented dispute also pauses an
- * active case. Events can
- * arrive in any order; a closed status is never overwritten by a late open one.
+ * active case. Events can arrive in any order and be redelivered: a closed
+ * status is never reopened, and an event for one dispute never replaces a
+ * different dispute that is open, lost or prevented.
  */
 async function handleOsirisDispute(
   stripe: Stripe,
