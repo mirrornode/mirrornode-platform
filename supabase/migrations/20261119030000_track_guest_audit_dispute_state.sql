@@ -7,36 +7,61 @@
 --
 -- Why: the payment status column held both refund and dispute state. A
 -- dispute plus a partial refund on the same payment left only
--- 'partially_refunded' visible, hiding the open dispute. Dispute state now has
--- its own columns, written only by the webhook's dispute handler:
---   * dispute_id      Stripe dispute id (dp_...)
---   * dispute_status  Stripe dispute status, as Stripe sends it
--- There is no CHECK constraint on dispute_status, so a status Stripe adds later
--- cannot make the webhook fail and retry forever.
+-- 'partially_refunded' visible, hiding the open dispute. A single "current
+-- dispute" column has the same problem one level down: a charge can have an
+-- inquiry and then a chargeback, and Stripe can deliver their events late or
+-- more than once, so an event for one dispute could hide the other.
 --
--- Rules added:
---   * Trigger: a closed status of a dispute (won, lost, warning_closed,
---     prevented) is never replaced for the same dispute_id, so a late or
---     replayed open event cannot reopen it. A different dispute_id replaces
---     the recorded one only when that one closed in the merchant's favour
---     (won, warning_closed), so a late event for an older dispute cannot hide
---     a newer open, lost or prevented one.
---   * Fulfillment start RPC: refuses a case whose dispute is open, lost or
---     prevented. Only no dispute, 'won' or 'warning_closed' can start.
+-- Dispute state is now kept per dispute:
+--   * disputes      jsonb object, Stripe dispute id -> latest Stripe status,
+--                   e.g. {"dp_1": "warning_closed", "dp_2": "needs_response"}.
+--   * dispute_hold  generated: true while any recorded dispute is open, lost
+--                   or prevented (anything but 'won' or 'warning_closed').
+-- Statuses are not constrained, so a status Stripe adds later cannot make the
+-- webhook fail and retry; an unknown status counts as a hold.
+--
+-- Rules:
+--   * record_osiris_audit_dispute_v1 (service_role only) is the one writer of
+--     dispute state. It sets one dispute's status, never changes a dispute
+--     whose recorded status is closed (won, lost, warning_closed, prevented),
+--     and pauses an active case while dispute_hold is true. It never unpauses.
+--   * Trigger: for every other writer, a dispute is never removed from the map
+--     and a closed dispute's status never changes.
+--   * Intake (application) and the fulfillment start RPC refuse a case while
+--     dispute_hold is true.
 -- The existing refund rules in the trigger are unchanged. Payment status
 -- 'disputed' is no longer written by the application.
 
 begin;
 
 alter table public.guest_audit_purchases
-  add column if not exists dispute_id text,
-  add column if not exists dispute_status text;
+  add column if not exists disputes jsonb not null default '{}'::jsonb;
 
-comment on column public.guest_audit_purchases.dispute_id is
-  'Stripe dispute id for the most recent dispute recorded against this purchase.';
+do $$
+begin
+  if not exists (
+    select 1 from pg_catalog.pg_constraint
+    where conrelid = 'public.guest_audit_purchases'::regclass
+      and conname = 'guest_audit_purchases_disputes_object_check'
+  ) then
+    alter table public.guest_audit_purchases
+      add constraint guest_audit_purchases_disputes_object_check
+      check (pg_catalog.jsonb_typeof(disputes) = 'object');
+  end if;
+end
+$$;
 
-comment on column public.guest_audit_purchases.dispute_status is
-  'Stripe dispute status for dispute_id, tracked separately from the refund state in status.';
+alter table public.guest_audit_purchases
+  add column if not exists dispute_hold boolean
+  generated always as (
+    pg_catalog.jsonb_path_exists(disputes, '$.* ? (@ != "won" && @ != "warning_closed")')
+  ) stored;
+
+comment on column public.guest_audit_purchases.disputes is
+  'Stripe dispute id -> latest Stripe dispute status, one entry per dispute. Tracked separately from the refund state in status.';
+
+comment on column public.guest_audit_purchases.dispute_hold is
+  'True while any recorded dispute is open, lost or prevented. Intake and fulfillment start refuse the case while it is true.';
 
 create or replace function public.guest_audit_purchases_keep_refunds()
 returns trigger
@@ -44,6 +69,9 @@ language plpgsql
 security invoker
 set search_path = pg_catalog, public
 as $$
+declare
+  v_key text;
+  v_status text;
 begin
   if old.status = 'refunded' then
     new.status := 'refunded';
@@ -56,26 +84,18 @@ begin
     new.fulfillment_status := 'refunded';
   end if;
 
-  -- Dispute state. Keep the recorded dispute when:
-  --   * it is closed, and the write is for the same dispute (a closed status
-  --     is final), or
-  --   * the write is for a different dispute and the recorded one is still
-  --     open, lost or prevented. Only a dispute closed in the merchant's
-  --     favour (won, warning_closed) may be replaced by a different dispute.
-  -- So a late or redelivered event for an older dispute cannot hide a newer
-  -- open one, and a closed dispute cannot be reopened.
-  if old.dispute_id is not null
-     and (
-       (old.dispute_status in ('won', 'lost', 'warning_closed', 'prevented')
-        and (new.dispute_id is null or new.dispute_id = old.dispute_id))
-       or
-       (new.dispute_id is not null
-        and new.dispute_id <> old.dispute_id
-        and coalesce(old.dispute_status, '') not in ('won', 'warning_closed'))
-     ) then
-    new.dispute_id := old.dispute_id;
-    new.dispute_status := old.dispute_status;
+  -- Disputes: an entry is never removed, and a closed entry never changes.
+  if new.disputes is null or pg_catalog.jsonb_typeof(new.disputes) <> 'object' then
+    new.disputes := old.disputes;
   end if;
+  for v_key, v_status in
+    select e.key, e.value from pg_catalog.jsonb_each_text(old.disputes) as e
+  loop
+    if v_status in ('won', 'lost', 'warning_closed', 'prevented')
+       or (new.disputes ->> v_key) is null then
+      new.disputes := new.disputes || pg_catalog.jsonb_build_object(v_key, v_status);
+    end if;
+  end loop;
 
   return new;
 end
@@ -85,7 +105,68 @@ revoke all privileges on function public.guest_audit_purchases_keep_refunds()
   from public, anon, authenticated;
 
 comment on function public.guest_audit_purchases_keep_refunds() is
-  'Keeps refunded and partially refunded Osiris Audit v1 purchases from being reopened, and keeps a closed dispute closed.';
+  'Keeps refunded and partially refunded Osiris Audit v1 purchases from being reopened, and keeps each closed dispute closed.';
+
+create or replace function public.record_osiris_audit_dispute_v1(
+  p_stripe_session_id text,
+  p_dispute_id text,
+  p_dispute_status text
+)
+returns table (
+  fulfillment_status text,
+  dispute_hold boolean,
+  recorded_status text
+)
+language plpgsql
+security invoker
+set search_path = pg_catalog, public
+as $$
+#variable_conflict use_column
+begin
+  if p_stripe_session_id is null
+     or p_dispute_id is null
+     or p_dispute_id !~ '^[A-Za-z0-9_]+$'
+     or nullif(pg_catalog.btrim(p_dispute_status), '') is null then
+    raise exception using
+      errcode = '22023',
+      message = 'invalid Osiris dispute record';
+  end if;
+
+  -- One statement under the row lock: set this dispute's status unless its
+  -- recorded status is already closed. Other disputes are untouched.
+  update public.guest_audit_purchases g
+  set
+    disputes = case
+      when (g.disputes ->> p_dispute_id) in ('won', 'lost', 'warning_closed', 'prevented')
+        then g.disputes
+      else g.disputes || pg_catalog.jsonb_build_object(p_dispute_id, p_dispute_status)
+    end,
+    updated_at = pg_catalog.now()
+  where g.stripe_session_id = p_stripe_session_id;
+
+  -- Same transaction, row still locked: pause an active case while any
+  -- dispute holds it. Never unpauses.
+  update public.guest_audit_purchases g
+  set fulfillment_status = 'paused', updated_at = pg_catalog.now()
+  where g.stripe_session_id = p_stripe_session_id
+    and g.dispute_hold
+    and g.fulfillment_status in ('intake_pending', 'intake_complete', 'fulfillment_started');
+
+  return query
+  select g.fulfillment_status, g.dispute_hold, g.disputes ->> p_dispute_id
+  from public.guest_audit_purchases g
+  where g.stripe_session_id = p_stripe_session_id;
+end;
+$$;
+
+revoke all privileges on function public.record_osiris_audit_dispute_v1(text, text, text)
+  from public, anon, authenticated;
+
+grant execute on function public.record_osiris_audit_dispute_v1(text, text, text)
+  to service_role;
+
+comment on function public.record_osiris_audit_dispute_v1(text, text, text) is
+  'Records one Stripe dispute status for an Osiris Audit v1 purchase, keeps closed disputes closed, and pauses an active case while any dispute holds it.';
 
 create or replace function public.start_osiris_audit_fulfillment_v1(
   p_stripe_session_id text,
@@ -191,8 +272,7 @@ begin
      or v_target.status is distinct from 'paid'
      or v_target.customer_email is null
      or v_target.fulfillment_status <> 'intake_complete'
-     or (v_target.dispute_status is not null
-         and v_target.dispute_status not in ('won', 'warning_closed'))
+     or v_target.dispute_hold
      or v_target.intake_submitted_at is null
      or v_target.intake_authorization_confirmed_at is null
      or v_target.intake_system_summary is null
@@ -254,6 +334,6 @@ grant execute on function public.start_osiris_audit_fulfillment_v1(
 comment on function public.start_osiris_audit_fulfillment_v1(
   text, uuid, text, text, uuid
 ) is
-  'Atomically advances one paid, authorized, intake-complete Osiris Audit v1 case with no open or lost dispute into fulfillment with Operator attribution and idempotent receipt binding.';
+  'Atomically advances one paid, authorized, intake-complete Osiris Audit v1 case with no open, lost or prevented dispute into fulfillment with Operator attribution and idempotent receipt binding.';
 
 commit;

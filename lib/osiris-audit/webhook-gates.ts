@@ -26,8 +26,8 @@ export function expectedLivemode(secretKey: string): boolean {
  * Payment statuses that record money moving back, or a case held for review.
  * A replayed payment event or an intake call must never overwrite them with
  * Stripe's checkout `payment_status`, which stays `paid` after a refund.
- * Disputes are tracked separately, in `dispute_status`, so a dispute and a
- * refund on the same payment are both visible.
+ * Disputes are tracked separately, one entry per dispute in `disputes`, so a
+ * dispute and a refund on the same payment are both visible.
  */
 export const OSIRIS_AUDIT_V1_PROTECTED_PAYMENT_STATUSES = [
   'refunded',
@@ -50,12 +50,13 @@ export const OSIRIS_AUDIT_V1_CLOSED_DISPUTE_STATUSES = [
 
 /**
  * Closed dispute statuses that leave a payment standing. Any other recorded
- * dispute (open, lost or prevented) keeps intake and fulfillment start closed.
+ * dispute (open, lost, prevented or a status not listed here) sets the
+ * database's generated `dispute_hold`, which keeps intake and fulfillment
+ * start closed. Must match the generated column in
+ * supabase/migrations/20261119030000_track_guest_audit_dispute_state.sql.
  */
 export const OSIRIS_AUDIT_V1_CLEARED_DISPUTE_STATUSES = ['won', 'warning_closed'] as const;
 
-/** PostgREST `or` filter: no dispute recorded, or one that closed in the merchant's favour. */
-export const OSIRIS_DISPUTE_ALLOWS_INTAKE = `dispute_status.is.null,dispute_status.in.(${OSIRIS_AUDIT_V1_CLEARED_DISPUTE_STATUSES.join(',')})`;
 
 export function isDisputeClosed(status: string | null | undefined): boolean {
   return (OSIRIS_AUDIT_V1_CLOSED_DISPUTE_STATUSES as readonly string[]).includes(status ?? '');

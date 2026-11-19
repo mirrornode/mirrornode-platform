@@ -1,13 +1,15 @@
 /**
  * A recording stand-in for the parts of supabase-js the Osiris routes use.
  * Every `from(table)` call becomes one recorded operation with its filter
- * chain, so tests can assert exactly which conditional writes were sent.
+ * chain, and every `rpc(name, args)` call one operation with its arguments
+ * (table = function name, payload = args), so tests can assert exactly which
+ * conditional writes and function calls were sent.
  * Results come from a queue, in call order; unqueued calls succeed with no rows.
  */
 
 export type RecordedOp = {
   table: string;
-  kind: 'upsert' | 'update' | 'insert' | 'select';
+  kind: 'upsert' | 'update' | 'insert' | 'select' | 'rpc';
   payload?: unknown;
   options?: unknown;
   filters: Array<[string, ...unknown[]]>;
@@ -42,6 +44,11 @@ export function createSupabaseRecorder() {
   }
 
   const client = {
+    rpc(name: string, args?: unknown) {
+      const op: RecordedOp = { table: name, kind: 'rpc', payload: args, filters: [], selected: true };
+      ops.push(op);
+      return builder(op);
+    },
     from(table: string) {
       const start = (kind: RecordedOp['kind'], payload?: unknown, options?: unknown) => {
         const op: RecordedOp = { table, kind, payload, options, filters: [], selected: false };

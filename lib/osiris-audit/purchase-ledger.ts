@@ -3,7 +3,9 @@
  *
  * Every write here is a single conditional statement, so a concurrent refund,
  * dispute or fulfillment change committed by another request is never
- * overwritten. The database trigger in
+ * overwritten. Dispute state goes through one database function,
+ * record_osiris_audit_dispute_v1, which updates a single dispute's entry under
+ * the row lock. The database trigger in
  * supabase/migrations/20261118193000_keep_guest_audit_refunds_monotonic.sql
  * and supabase/migrations/20261119030000_track_guest_audit_dispute_state.sql
  * enforce the refund and dispute rules again at the table, for any other writer.
@@ -11,12 +13,9 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
-  OSIRIS_AUDIT_V1_CLEARED_DISPUTE_STATUSES,
-  OSIRIS_AUDIT_V1_CLOSED_DISPUTE_STATUSES,
   OSIRIS_AUDIT_V1_FLOW,
   OSIRIS_AUDIT_V1_PAUSABLE_STATES,
   OSIRIS_AUDIT_V1_PROTECTED_PAYMENT_STATUSES,
-  isDisputeCleared,
 } from '@/lib/osiris-audit/webhook-gates';
 
 export const PURCHASE_TABLE = 'guest_audit_purchases';
@@ -79,6 +78,9 @@ export async function ensureOsirisPurchaseRow(
   now: string,
   dispute?: OsirisDisputeFacts
 ): Promise<{ error: DbError }> {
+  if (dispute && !STRIPE_ID.test(dispute.disputeId)) {
+    return { error: { message: 'Unexpected dispute id format' } };
+  }
   const { error } = await supabase
     .from(PURCHASE_TABLE)
     .upsert(
@@ -87,7 +89,7 @@ export async function ensureOsirisPurchaseRow(
         flow: OSIRIS_AUDIT_V1_FLOW,
         status,
         fulfillment_status: fulfillmentStatus,
-        ...(dispute ?? {}),
+        ...(dispute ? { disputes: { [dispute.disputeId]: dispute.status } } : {}),
         updated_at: now,
       },
       { onConflict: 'stripe_session_id', ignoreDuplicates: true }
@@ -145,108 +147,51 @@ export async function holdOsirisCase(
 }
 
 export type OsirisDisputeFacts = {
-  dispute_id: string;
-  dispute_status: string;
+  disputeId: string;
+  status: string;
 };
 
 /** Stripe object ids are letters, digits and underscores; anything else is refused. */
 const STRIPE_ID = /^[A-Za-z0-9_]+$/;
 
-/**
- * PostgREST `or` filter that every dispute write carries. A write for dispute
- * `disputeId` goes through only when the row has:
- *   - no dispute recorded yet, or
- *   - this same dispute, still open (a closed status is final), or
- *   - a different dispute that closed in the merchant's favour (won, inquiry
- *     closed), so a later chargeback after a closed inquiry is recorded.
- * It never replaces an open, lost or prevented dispute with a different one.
- * So a late or redelivered event for an older dispute can never hide a newer
- * open dispute, and a closed status can never be reopened.
- */
-function disputeWriteAllowed(disputeId: string): string {
-  const closed = inList(OSIRIS_AUDIT_V1_CLOSED_DISPUTE_STATUSES);
-  const cleared = inList(OSIRIS_AUDIT_V1_CLEARED_DISPUTE_STATUSES);
-  return [
-    'dispute_id.is.null',
-    `and(dispute_id.eq.${disputeId},dispute_status.not.in.${closed})`,
-    `and(dispute_id.neq.${disputeId},dispute_status.in.${cleared})`,
-  ].join(',');
-}
+export const RECORD_DISPUTE_RPC = 'record_osiris_audit_dispute_v1';
 
-type DisputeWriteResult = { error: DbError; fulfillmentStatus: string | null };
+type DisputeRecord = {
+  fulfillment_status: string | null;
+  dispute_hold: boolean | null;
+  recorded_status: string | null;
+};
 
 /**
- * One guarded dispute write: pause an active case if `pause`, else (or if no
- * active case matched) record the dispute fields only. Both statements carry
- * the same dispute guard, so a concurrent change is re-checked after any lock.
+ * Records one dispute's latest Stripe status in the row's `disputes` map
+ * (dispute id -> status), separately from the refund state in `status`.
+ *
+ * The database function does it in one transaction under the row lock: it
+ * sets only this dispute's entry, never changes an entry that is already
+ * closed (won, lost, warning_closed, prevented), and pauses an active case
+ * while any dispute in the map is open, lost or prevented (`dispute_hold`).
+ * It never unpauses. Because each dispute has its own entry, events for
+ * different disputes can arrive in any order, late or more than once, without
+ * one hiding another.
  */
-async function writeOsirisDispute(
+export async function recordOsirisDispute(
   supabase: SupabaseClient,
   sessionId: string,
-  dispute: OsirisDisputeFacts,
-  pause: boolean,
-  now: string
-): Promise<DisputeWriteResult> {
-  if (!STRIPE_ID.test(dispute.dispute_id)) {
-    return { error: { message: 'Unexpected dispute id format' }, fulfillmentStatus: null };
+  dispute: OsirisDisputeFacts
+): Promise<{ error: DbError; fulfillmentStatus: string | null; disputeHold: boolean | null }> {
+  if (!STRIPE_ID.test(dispute.disputeId)) {
+    return { error: { message: 'Unexpected dispute id format' }, fulfillmentStatus: null, disputeHold: null };
   }
-  const guard = disputeWriteAllowed(dispute.dispute_id);
-
-  if (pause) {
-    const { data: paused, error: pauseError } = await supabase
-      .from(PURCHASE_TABLE)
-      .update({ ...dispute, fulfillment_status: 'paused', updated_at: now })
-      .eq('stripe_session_id', sessionId)
-      .or(guard)
-      .in('fulfillment_status', [...OSIRIS_AUDIT_V1_PAUSABLE_STATES])
-      .select('fulfillment_status');
-    if (pauseError) return { error: pauseError, fulfillmentStatus: null };
-    if (paused && paused.length > 0) return { error: null, fulfillmentStatus: 'paused' };
-  }
-
-  const { data: recorded, error: recordError } = await supabase
-    .from(PURCHASE_TABLE)
-    .update({ ...dispute, updated_at: now })
-    .eq('stripe_session_id', sessionId)
-    .or(guard)
-    .select('fulfillment_status');
-  if (recordError) return { error: recordError, fulfillmentStatus: null };
-
-  const after = (recorded?.[0] as { fulfillment_status?: string } | undefined)?.fulfillment_status;
-  return { error: null, fulfillmentStatus: after ?? null };
-}
-
-/**
- * Records an open dispute in `dispute_status`, separately from the refund
- * state in `status`, and pauses an active case.
- */
-export async function recordOsirisDisputeOpen(
-  supabase: SupabaseClient,
-  sessionId: string,
-  dispute: OsirisDisputeFacts,
-  now: string
-): Promise<DisputeWriteResult> {
-  return writeOsirisDispute(supabase, sessionId, dispute, true, now);
-}
-
-/**
- * Records a closed dispute, under the same dispute guard as an open one. A
- * dispute closed in the merchant's favour (won, inquiry closed) never changes
- * fulfillment: a paused case stays paused until the Operator decides. A lost
- * or prevented dispute also pauses an active case, in case its earlier open
- * event never arrived.
- */
-export async function recordOsirisDisputeClosed(
-  supabase: SupabaseClient,
-  sessionId: string,
-  dispute: OsirisDisputeFacts,
-  now: string
-): Promise<DisputeWriteResult> {
-  return writeOsirisDispute(
-    supabase,
-    sessionId,
-    dispute,
-    !isDisputeCleared(dispute.dispute_status),
-    now
-  );
+  const { data, error } = await supabase.rpc(RECORD_DISPUTE_RPC, {
+    p_stripe_session_id: sessionId,
+    p_dispute_id: dispute.disputeId,
+    p_dispute_status: dispute.status,
+  });
+  if (error) return { error, fulfillmentStatus: null, disputeHold: null };
+  const row = (Array.isArray(data) ? data[0] : data) as DisputeRecord | undefined;
+  return {
+    error: null,
+    fulfillmentStatus: row?.fulfillment_status ?? null,
+    disputeHold: row?.dispute_hold ?? null,
+  };
 }

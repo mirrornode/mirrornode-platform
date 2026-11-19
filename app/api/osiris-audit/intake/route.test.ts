@@ -206,8 +206,8 @@ describe('POST /api/osiris-audit/intake', () => {
       '(refunded,partially_refunded,needs_review)',
     ]);
     for (const op of db.ops) {
-      expect(op.payload ?? {}).not.toHaveProperty('dispute_status');
-      expect(op.payload ?? {}).not.toHaveProperty('dispute_id');
+      expect(op.payload ?? {}).not.toHaveProperty('disputes');
+      expect(op.payload ?? {}).not.toHaveProperty('dispute_hold');
     }
   });
 
@@ -218,7 +218,7 @@ describe('POST /api/osiris-audit/intake', () => {
       ['eq', 'stripe_session_id', 'cs_test_paid'],
       ['eq', 'status', 'paid'],
       ['eq', 'fulfillment_status', 'intake_pending'],
-      ['or', 'dispute_status.is.null,dispute_status.in.(won,warning_closed)'],
+      ['eq', 'dispute_hold', false],
       ['is', 'intake_submitted_at', null],
     ]);
   });

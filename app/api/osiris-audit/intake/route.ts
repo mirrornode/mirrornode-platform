@@ -8,7 +8,6 @@ import { osirisAuditIntakeSchema } from '@/lib/osiris-audit/intake';
 import { PURCHASE_TABLE, recordOsirisPayment } from '@/lib/osiris-audit/purchase-ledger';
 import {
   OSIRIS_AUDIT_V1_FLOW,
-  OSIRIS_DISPUTE_ALLOWS_INTAKE,
   checkOsirisOffer,
 } from '@/lib/osiris-audit/webhook-gates';
 
@@ -122,7 +121,7 @@ export async function POST(req: NextRequest) {
     .eq('stripe_session_id', session.id)
     .eq('status', 'paid')
     .eq('fulfillment_status', 'intake_pending')
-    .or(OSIRIS_DISPUTE_ALLOWS_INTAKE)
+    .eq('dispute_hold', false)
     .is('intake_submitted_at', null)
     .select('stripe_session_id');
 

@@ -43,8 +43,6 @@ import {
 
 const db = createSupabaseRecorder();
 const PROTECTED = '(refunded,partially_refunded,needs_review)';
-const DISPUTE_GUARD =
-  'dispute_id.is.null,and(dispute_id.eq.dp_synthetic,dispute_status.not.in.(won,lost,warning_closed,prevented)),and(dispute_id.neq.dp_synthetic,dispute_status.in.(won,warning_closed))';
 const PAUSABLE = ['intake_pending', 'intake_complete', 'fulfillment_started'];
 
 function request() {
@@ -352,157 +350,121 @@ describe('POST /api/webhook', () => {
   });
 
   describe('charge.dispute.*', () => {
-    it('records an open dispute in its own columns and pauses an active case, leaving the payment status alone', async () => {
-      db.queue({}, { data: [{ fulfillment_status: 'paused' }] });
+    const rpcCall = (status: string, id = 'dp_synthetic') => ({
+      table: 'record_osiris_audit_dispute_v1',
+      kind: 'rpc',
+      payload: { p_stripe_session_id: 'cs_test_synthetic', p_dispute_id: id, p_dispute_status: status },
+    });
+
+    it('records an open dispute through the dispute function, which pauses an active case; the payment status is left alone', async () => {
+      db.queue({}, { data: [{ fulfillment_status: 'paused', dispute_hold: true, recorded_status: 'needs_response' }] });
       mocks.constructEvent.mockReturnValue(disputeEvent());
       const res = await POST(request());
-      expect(await res.json()).toMatchObject({ dispute: 'open', disputeStatus: 'needs_response', fulfillmentStatus: 'paused' });
+      expect(await res.json()).toMatchObject({
+        dispute: 'open',
+        disputeStatus: 'needs_response',
+        disputeHold: true,
+        fulfillmentStatus: 'paused',
+      });
+      expect(db.ops).toHaveLength(2);
       expect(db.ops[0]).toMatchObject({
         kind: 'upsert',
-        payload: { status: 'paid', fulfillment_status: 'paused', dispute_id: 'dp_synthetic', dispute_status: 'needs_response' },
+        payload: {
+          status: 'paid',
+          fulfillment_status: 'paused',
+          disputes: { dp_synthetic: 'needs_response' },
+        },
         options: { onConflict: 'stripe_session_id', ignoreDuplicates: true },
       });
-      expect(db.ops[1].payload).toEqual({
-        dispute_id: 'dp_synthetic',
-        dispute_status: 'needs_response',
-        fulfillment_status: 'paused',
-        updated_at: expect.any(String),
-      });
-      expect(db.ops[1].payload).not.toHaveProperty('status');
-      expect(db.ops[1].filters).toContainEqual(['or', DISPUTE_GUARD]);
-      expect(db.ops[1].filters).toContainEqual(['in', 'fulfillment_status', ['intake_pending', 'intake_complete', 'fulfillment_started']]);
+      expect(db.ops[1]).toMatchObject(rpcCall('needs_response'));
+      expect(db.ops[1].filters).toEqual([]);
     });
 
-    it('records an open dispute on a partly refunded or delivered case without changing its fulfillment', async () => {
-      db.queue({}, { data: [] }, { data: [{ fulfillment_status: 'paused' }] });
-      mocks.constructEvent.mockReturnValue(disputeEvent());
+    it.each([
+      ['charge.dispute.created', 'warning_needs_response', 'open'],
+      ['charge.dispute.updated', 'under_review', 'open'],
+      ['charge.dispute.closed', 'won', 'closed'],
+      ['charge.dispute.closed', 'warning_closed', 'closed'],
+      ['charge.dispute.closed', 'lost', 'closed'],
+      ['charge.dispute.closed', 'prevented', 'closed'],
+    ])('%s with status %s goes through the same dispute function with only that dispute\'s id and status', async (type, status, kind) => {
+      db.queue({}, { data: [{ fulfillment_status: 'paused', dispute_hold: kind === 'open', recorded_status: status }] });
+      mocks.constructEvent.mockReturnValue(disputeEvent('pi_synthetic', type, status));
       const res = await POST(request());
-      expect(await res.json()).toMatchObject({ dispute: 'open', fulfillmentStatus: 'paused' });
-      expect(db.ops).toHaveLength(3);
-      expect(db.ops[2].payload).toEqual({ dispute_id: 'dp_synthetic', dispute_status: 'needs_response', updated_at: expect.any(String) });
-      expect(db.ops[2].filters).toContainEqual(['or', DISPUTE_GUARD]);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ dispute: kind, disputeStatus: status });
+      expect(db.ops).toHaveLength(2);
+      expect(db.ops[1]).toMatchObject(rpcCall(status));
+      // No table update writes dispute state directly, so no event can
+      // overwrite another dispute's entry.
+      for (const op of db.ops) expect(op.kind).not.toBe('update');
     });
 
-    it.each(['charge.dispute.created', 'charge.dispute.updated'])(
-      'a late %s cannot reopen a closed dispute: both writes carry the closed-dispute guard',
-      async (type) => {
-        db.queue({}, { data: [] }, { data: [] });
-        mocks.constructEvent.mockReturnValue(disputeEvent('pi_synthetic', type, 'under_review'));
-        const res = await POST(request());
-        expect(res.status).toBe(200);
-        expect(await res.json()).toMatchObject({ dispute: 'open', fulfillmentStatus: null });
-        for (const op of db.ops.slice(1)) expect(op.filters).toContainEqual(['or', DISPUTE_GUARD]);
-      }
-    );
-
-    it.each(['won', 'warning_closed'])(
-      'records a dispute closed in the merchant\'s favour (%s) without unpausing or pausing the case',
-      async (status) => {
-        db.queue({}, { data: [{ fulfillment_status: 'paused' }] });
-        mocks.constructEvent.mockReturnValue(disputeEvent('pi_synthetic', 'charge.dispute.closed', status));
-        const res = await POST(request());
-        expect(await res.json()).toMatchObject({ dispute: 'closed', disputeStatus: status, fulfillmentStatus: 'paused' });
-        expect(db.ops).toHaveLength(2);
-        expect(db.ops[1].payload).toEqual({ dispute_id: 'dp_synthetic', dispute_status: status, updated_at: expect.any(String) });
-        expect(db.ops[1].filters).toEqual([
-          ['eq', 'stripe_session_id', 'cs_test_synthetic'],
-          ['or', DISPUTE_GUARD],
-        ]);
-      }
-    );
-
-    it.each(['lost', 'prevented'])(
-      'records a %s dispute and pauses an active case, even if the open event never arrived',
-      async (status) => {
-        db.queue({}, { data: [{ fulfillment_status: 'paused' }] });
-        mocks.constructEvent.mockReturnValue(disputeEvent('pi_synthetic', 'charge.dispute.closed', status));
-        const res = await POST(request());
-        expect(await res.json()).toMatchObject({ dispute: 'closed', disputeStatus: status, fulfillmentStatus: 'paused' });
-        expect(db.ops[1].payload).toEqual({
-          dispute_id: 'dp_synthetic',
-          dispute_status: status,
-          fulfillment_status: 'paused',
-          updated_at: expect.any(String),
-        });
-        expect(db.ops[1].filters).toContainEqual(['in', 'fulfillment_status', ['intake_pending', 'intake_complete', 'fulfillment_started']]);
-        expect(db.ops[1].filters).toContainEqual(['or', DISPUTE_GUARD]);
-        expect(db.ops[1].payload).not.toHaveProperty('status');
-      }
-    );
-
-    it.each(['won', 'warning_closed', 'lost'])(
-      'a redelivered %s event for an older dispute carries the identity guard on every write, so it cannot replace a newer open dispute',
-      async (status) => {
-        db.queue({}, { data: [] }, { data: [] });
-        mocks.constructEvent.mockReturnValue(disputeEvent('pi_synthetic', 'charge.dispute.closed', status));
-        const res = await POST(request());
-        expect(res.status).toBe(200);
-        expect(await res.json()).toMatchObject({ dispute: 'closed', fulfillmentStatus: null });
-        expect(db.ops.length).toBeGreaterThan(1);
-        for (const op of db.ops.slice(1)) expect(op.filters).toContainEqual(['or', DISPUTE_GUARD]);
-      }
-    );
-
-    it('refuses a malformed dispute id on a closed event too', async () => {
-      db.queue({});
-      mocks.constructEvent.mockReturnValue(
-        disputeEvent('pi_synthetic', 'charge.dispute.closed', 'won', 'dp_x),dispute_id.is.null,(')
-      );
-      expect((await POST(request())).status).toBe(500);
-      expect(db.ops).toHaveLength(1);
+    it('reports the hold the database computed, so a closed inquiry with an open chargeback still reads as held', async () => {
+      db.queue({}, { data: [{ fulfillment_status: 'paused', dispute_hold: true, recorded_status: 'warning_closed' }] });
+      mocks.constructEvent.mockReturnValue(disputeEvent('pi_synthetic', 'charge.dispute.closed', 'warning_closed', 'dp_inquiry'));
+      const res = await POST(request());
+      expect(await res.json()).toMatchObject({ dispute: 'closed', disputeHold: true, fulfillmentStatus: 'paused' });
+      expect(db.ops[1]).toMatchObject(rpcCall('warning_closed', 'dp_inquiry'));
     });
 
-    it('records a lost dispute on a delivered or refunded case without touching its fulfillment', async () => {
-      db.queue({}, { data: [] }, { data: [{ fulfillment_status: 'refunded' }] });
+    it('reports a delivered or refunded case\'s fulfillment unchanged', async () => {
+      db.queue({}, { data: [{ fulfillment_status: 'refunded', dispute_hold: true, recorded_status: 'lost' }] });
       mocks.constructEvent.mockReturnValue(disputeEvent('pi_synthetic', 'charge.dispute.closed', 'lost'));
       const res = await POST(request());
-      expect(await res.json()).toMatchObject({ fulfillmentStatus: 'refunded' });
-      expect(db.ops[2].payload).toEqual({ dispute_id: 'dp_synthetic', dispute_status: 'lost', updated_at: expect.any(String) });
+      expect(await res.json()).toMatchObject({ fulfillmentStatus: 'refunded', disputeHold: true });
     });
 
-    it('a dispute arriving before the payment event creates a paused row with the dispute recorded', async () => {
-      db.queue({}, { data: [{ fulfillment_status: 'paused' }] });
+    it('a dispute arriving before the payment event creates a paused row with that dispute recorded', async () => {
+      db.queue({}, { data: [{ fulfillment_status: 'paused', dispute_hold: true, recorded_status: 'warning_needs_response' }] });
       mocks.constructEvent.mockReturnValue(disputeEvent('pi_synthetic', 'charge.dispute.created', 'warning_needs_response'));
       await POST(request());
       expect(db.ops[0].payload).toMatchObject({
         stripe_session_id: 'cs_test_synthetic',
         status: 'paid',
         fulfillment_status: 'paused',
-        dispute_status: 'warning_needs_response',
+        disputes: { dp_synthetic: 'warning_needs_response' },
       });
     });
 
-    it('a later refund never touches the dispute columns, and a later payment event never touches them either', async () => {
+    it('a later refund never touches the dispute map, and a later payment event never touches it either', async () => {
       db.queue({}, { data: [{ fulfillment_status: 'paused' }] });
       mocks.constructEvent.mockReturnValue(refundEvent(5000));
       await POST(request());
       for (const op of db.ops) {
-        expect(op.payload).not.toHaveProperty('dispute_status');
-        expect(op.payload).not.toHaveProperty('dispute_id');
+        expect(op.kind).not.toBe('rpc');
+        expect(op.payload).not.toHaveProperty('disputes');
       }
       db.reset();
       mocks.constructEvent.mockReturnValue(completedEvent());
       await POST(request());
       for (const op of db.ops) {
-        expect(op.payload).not.toHaveProperty('dispute_status');
-        expect(op.payload).not.toHaveProperty('dispute_id');
+        expect(op.kind).not.toBe('rpc');
+        expect(op.payload).not.toHaveProperty('disputes');
       }
     });
 
-    it('refuses a dispute id that is not a Stripe id, so it cannot inject a filter', async () => {
-      db.queue({});
-      mocks.constructEvent.mockReturnValue(
-        disputeEvent('pi_synthetic', 'charge.dispute.created', 'needs_response', 'dp_x,status.eq.paid')
-      );
+    it.each([
+      ['charge.dispute.created', 'needs_response', 'dp_x,status.eq.paid'],
+      ['charge.dispute.closed', 'won', 'dp_x),dispute_hold.is.false,('],
+    ])('%s: refuses a dispute id that is not a Stripe id and writes nothing', async (type, status, id) => {
+      mocks.constructEvent.mockReturnValue(disputeEvent('pi_synthetic', type, status, id));
       const res = await POST(request());
       expect(res.status).toBe(500);
-      expect(db.ops).toHaveLength(1);
+      expect(db.ops).toHaveLength(0);
     });
 
-    it('returns 500 when a dispute write fails', async () => {
+    it('returns 500 so Stripe retries when the dispute function fails', async () => {
       db.queue({}, { error: { message: 'boom' } });
       mocks.constructEvent.mockReturnValue(disputeEvent());
       expect((await POST(request())).status).toBe(500);
+    });
+
+    it('returns 500 when the row insert fails, without calling the dispute function', async () => {
+      db.queue({ error: { message: 'boom' } });
+      mocks.constructEvent.mockReturnValue(disputeEvent());
+      expect((await POST(request())).status).toBe(500);
+      expect(db.ops).toHaveLength(1);
     });
 
     it('ignores disputes without a payment intent or for other products', async () => {

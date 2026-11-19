@@ -14,8 +14,7 @@ import {
   ensureOsirisPurchaseRow,
   holdOsirisCase,
   markOsirisRefunded,
-  recordOsirisDisputeClosed,
-  recordOsirisDisputeOpen,
+  recordOsirisDispute,
   recordOsirisPayment,
   type OsirisPurchaseFacts,
 } from '@/lib/osiris-audit/purchase-ledger';
@@ -229,17 +228,18 @@ async function handleOsirisRefund(
 }
 
 /**
- * Dispute state is tracked in `dispute_id` and `dispute_status`, separately
- * from the refund state in `status`, so a dispute stays visible when the same
- * payment is also partly or fully refunded.
+ * Dispute state is tracked per dispute, in the `disputes` map (dispute id ->
+ * latest Stripe status), separately from the refund state in `status`, so a
+ * dispute stays visible when the same payment is also partly or fully
+ * refunded, and an inquiry and a later chargeback on the same payment are both
+ * kept.
  *
- * An open dispute (created, or updated to any open status) pauses an active
- * case; the fulfillment start RPC also refuses a case with an open or lost
- * dispute. A closed dispute is recorded but never unpauses the case: resuming
- * is the Operator's decision. A lost or prevented dispute also pauses an
- * active case. Events can arrive in any order and be redelivered: a closed
- * status is never reopened, and an event for one dispute never replaces a
- * different dispute that is open, lost or prevented.
+ * While any recorded dispute is open, lost or prevented, the database's
+ * `dispute_hold` is true: an active case is paused, and intake and the
+ * fulfillment start RPC refuse it. A dispute closed in the merchant's favour
+ * never unpauses the case: resuming is the Operator's decision. Events can
+ * arrive in any order and be redelivered: a closed dispute's status is never
+ * changed, and an event for one dispute never touches another's entry.
  */
 async function handleOsirisDispute(
   stripe: Stripe,
@@ -263,12 +263,12 @@ async function handleOsirisDispute(
   }
 
   const now = new Date().toISOString();
-  const disputeFacts = { dispute_id: dispute.id, dispute_status: dispute.status };
+  const disputeFacts = { disputeId: dispute.id, status: dispute.status };
   const closed = isDisputeClosed(dispute.status);
 
   // A dispute can arrive before checkout.session.completed. The row is created
   // paused with the dispute recorded; the payment event then fills in `paid`
-  // without touching the dispute columns or the pause.
+  // without touching the dispute map or the pause.
   const ensured = await ensureOsirisPurchaseRow(
     supabase,
     purchaseFacts(session),
@@ -279,15 +279,14 @@ async function handleOsirisDispute(
   );
   if (ensured.error) return dbFailure('Dispute insert error', ensured.error.message);
 
-  const written = closed
-    ? await recordOsirisDisputeClosed(supabase, session.id, disputeFacts, now)
-    : await recordOsirisDisputeOpen(supabase, session.id, disputeFacts, now);
+  const written = await recordOsirisDispute(supabase, session.id, disputeFacts);
   if (written.error) return dbFailure('Dispute update error', written.error.message);
 
   return NextResponse.json({
     received: true,
     dispute: closed ? 'closed' : 'open',
     disputeStatus: dispute.status,
+    disputeHold: written.disputeHold,
     fulfillmentStatus: written.fulfillmentStatus,
   });
 }
