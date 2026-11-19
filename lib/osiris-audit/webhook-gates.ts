@@ -26,13 +26,40 @@ export function expectedLivemode(secretKey: string): boolean {
  * Payment statuses that record money moving back, or a case held for review.
  * A replayed payment event or an intake call must never overwrite them with
  * Stripe's checkout `payment_status`, which stays `paid` after a refund.
+ * Disputes are tracked separately, in `dispute_status`, so a dispute and a
+ * refund on the same payment are both visible.
  */
 export const OSIRIS_AUDIT_V1_PROTECTED_PAYMENT_STATUSES = [
   'refunded',
   'partially_refunded',
-  'disputed',
   'needs_review',
 ] as const;
+
+/**
+ * Stripe dispute statuses that are final. A closed dispute never reopens, so
+ * a late or replayed event carrying an open status must not overwrite one.
+ * `warning_closed` ends an inquiry without a chargeback; `prevented` means
+ * the dispute was stopped before it became a chargeback.
+ */
+export const OSIRIS_AUDIT_V1_CLOSED_DISPUTE_STATUSES = [
+  'won',
+  'lost',
+  'warning_closed',
+  'prevented',
+] as const;
+
+/**
+ * Closed dispute statuses that leave a payment standing. Any other recorded
+ * dispute (open, lost or prevented) keeps intake and fulfillment start closed.
+ */
+export const OSIRIS_AUDIT_V1_CLEARED_DISPUTE_STATUSES = ['won', 'warning_closed'] as const;
+
+/** PostgREST `or` filter: no dispute recorded, or one that closed in the merchant's favour. */
+export const OSIRIS_DISPUTE_ALLOWS_INTAKE = `dispute_status.is.null,dispute_status.in.(${OSIRIS_AUDIT_V1_CLEARED_DISPUTE_STATUSES.join(',')})`;
+
+export function isDisputeClosed(status: string | null | undefined): boolean {
+  return (OSIRIS_AUDIT_V1_CLOSED_DISPUTE_STATUSES as readonly string[]).includes(status ?? '');
+}
 
 export type OsirisSessionMismatch =
   | 'NOT_PAYMENT_MODE'
@@ -119,4 +146,9 @@ export function classifyRefund(charge: RefundedChargeFacts): RefundKind {
   if (amount > 0 && refunded >= amount) return 'full';
   if (refunded > 0) return 'partial';
   return 'none';
+}
+
+/** True for a closed dispute that leaves the payment standing (won, inquiry closed). */
+export function isDisputeCleared(status: string | null | undefined): boolean {
+  return (OSIRIS_AUDIT_V1_CLEARED_DISPUTE_STATUSES as readonly string[]).includes(status ?? '');
 }

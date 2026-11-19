@@ -1,11 +1,22 @@
 #!/usr/bin/env bash
-# Database-level checks for Osiris Audit v1 refund integrity.
+# Database-level checks for Osiris Audit v1 refund and dispute integrity.
 #
 # Runs against a THROWAWAY local Postgres only. It creates the Supabase roles it
 # needs, applies the repository migrations in order, and replays the exact
 # statements that lib/osiris-audit/purchase-ledger.ts and the intake route send
 # through PostgREST (supabase-js upsert/update filters), including concurrent
 # sessions. Never point it at a hosted Supabase project.
+#
+# Every scenario and every race runs twice:
+#   1. with the guest_audit_purchases_keep_refunds trigger DISABLED, so the
+#      application's conditional writes are the only protection. This shows
+#      the app guards hold on their own, under real row locks.
+#   2. with the trigger ENABLED, plus controls that replay unguarded writes
+#      (the pre-fix upsert, an unguarded dispute write). The controls reopen a
+#      refund or a closed dispute in run 1 and are blocked in run 2, which shows
+#      the trigger is what stops them.
+# The fulfillment start RPC's own checks (status, fulfillment state, dispute
+# state) are part of the function body, not the trigger, so they apply in both.
 #
 # Usage: PGURL=postgresql://postgres@localhost:5432/postgres scripts/db/test-osiris-refund-integrity.sh
 
@@ -20,7 +31,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DB="osiris_refund_integrity_$$"
 ADMIN_URL="$PGURL"
 TEST_URL="${PGURL%/*}/$DB"
-NEW_MIGRATION="20261118193000_keep_guest_audit_refunds_monotonic.sql"
+RULE="guest_audit_purchases_keep_refunds"
 
 pass=0
 fail=0
@@ -49,9 +60,8 @@ create schema if not exists auth;
 create table if not exists auth.users (id uuid primary key);
 create or replace function auth.uid() returns uuid language sql stable as 'select null::uuid';" >/dev/null
 
-apply_migrations() { # $1 = include the new trigger migration (yes/no)
+apply_migrations() {
   for f in "$ROOT"/supabase/migrations/*.sql; do
-    if [[ "$1" == "no" && "$(basename "$f")" == "$NEW_MIGRATION" ]]; then continue; fi
     if [[ "$(basename "$f")" == "20260813212729_harden_guest_audit_purchase_privileges.sql" ]]; then
       # Known drift: this migration alters a trigger function that no repository
       # migration creates. Recreate it as the hosted project defines it (observed
@@ -66,7 +76,8 @@ apply_migrations() { # $1 = include the new trigger migration (yes/no)
 }
 
 # SQL equivalents of the PostgREST requests the app sends. Each mirrors one
-# helper in lib/osiris-audit/purchase-ledger.ts or the intake route.
+# helper in lib/osiris-audit/purchase-ledger.ts, the webhook route or the
+# intake route.
 define_app_statements() {
   q "
 create schema if not exists t;
@@ -78,13 +89,15 @@ create or replace function t.record_payment(p_id text, p_status text) returns vo
   on conflict (stripe_session_id) do nothing;
   update public.guest_audit_purchases set status = p_status, updated_at = now()
   where stripe_session_id = p_id
-    and status not in ('refunded','partially_refunded','disputed','needs_review');
+    and status not in ('refunded','partially_refunded','needs_review');
 \$\$;
 
--- ensureOsirisPurchaseRow: upsert(ignoreDuplicates)
-create or replace function t.ensure_row(p_id text, p_status text, p_fs text) returns void language sql as \$\$
-  insert into public.guest_audit_purchases (stripe_session_id, flow, status, fulfillment_status, updated_at)
-  values (p_id, 'osiris-audit-v1', p_status, p_fs, now())
+-- ensureOsirisPurchaseRow: upsert(ignoreDuplicates), optionally with dispute facts
+create or replace function t.ensure_row(p_id text, p_status text, p_fs text,
+    p_did text default null, p_dstatus text default null) returns void language sql as \$\$
+  insert into public.guest_audit_purchases
+    (stripe_session_id, flow, status, fulfillment_status, dispute_id, dispute_status, updated_at)
+  values (p_id, 'osiris-audit-v1', p_status, p_fs, p_did, p_dstatus, now())
   on conflict (stripe_session_id) do nothing;
 \$\$;
 
@@ -111,7 +124,68 @@ begin
   return v;
 end \$\$;
 
--- intake route: conditional intake write
+-- webhook handleOsirisRefund
+create or replace function t.full_refund(p_id text) returns void language sql as \$\$
+  select t.ensure_row(p_id, 'refunded', 'refunded');
+  select t.mark_refunded(p_id);
+\$\$;
+create or replace function t.partial_refund(p_id text) returns text language sql as \$\$
+  select t.ensure_row(p_id, 'partially_refunded', 'paused');
+  select t.hold(p_id, 'partially_refunded', array['refunded']);
+\$\$;
+
+-- recordOsirisDisputeOpen: same or() guard, conditional pause, else conditional record
+create or replace function t.dispute_open(p_id text, p_did text, p_dstatus text) returns text language plpgsql as \$\$
+declare v text;
+begin
+  update public.guest_audit_purchases
+  set dispute_id = p_did, dispute_status = p_dstatus, fulfillment_status = 'paused', updated_at = now()
+  where stripe_session_id = p_id
+    and (dispute_status is null or dispute_status not in ('won','lost','warning_closed','prevented')
+         or dispute_id is null or dispute_id <> p_did)
+    and fulfillment_status in ('intake_pending','intake_complete','fulfillment_started')
+  returning fulfillment_status into v;
+  if found then return v; end if;
+  update public.guest_audit_purchases
+  set dispute_id = p_did, dispute_status = p_dstatus, updated_at = now()
+  where stripe_session_id = p_id
+    and (dispute_status is null or dispute_status not in ('won','lost','warning_closed','prevented')
+         or dispute_id is null or dispute_id <> p_did)
+  returning fulfillment_status into v;
+  return v;
+end \$\$;
+
+-- recordOsirisDisputeClosed: unconditional dispute fields; lost or prevented
+-- also pauses an active case; won or inquiry closed never touches fulfillment
+create or replace function t.dispute_closed(p_id text, p_did text, p_dstatus text) returns text language plpgsql as \$\$
+declare v text;
+begin
+  if p_dstatus not in ('won','warning_closed') then
+    update public.guest_audit_purchases
+    set dispute_id = p_did, dispute_status = p_dstatus, fulfillment_status = 'paused', updated_at = now()
+    where stripe_session_id = p_id
+      and fulfillment_status in ('intake_pending','intake_complete','fulfillment_started')
+    returning fulfillment_status into v;
+    if found then return v; end if;
+  end if;
+  update public.guest_audit_purchases
+  set dispute_id = p_did, dispute_status = p_dstatus, updated_at = now()
+  where stripe_session_id = p_id
+  returning fulfillment_status into v;
+  return v;
+end \$\$;
+
+-- webhook handleOsirisDispute: ensure the row (paid, paused, dispute), then open or closed write
+create or replace function t.dispute_event(p_id text, p_did text, p_dstatus text) returns text language plpgsql as \$\$
+begin
+  perform t.ensure_row(p_id, 'paid', 'paused', p_did, p_dstatus);
+  if p_dstatus in ('won','lost','warning_closed','prevented') then
+    return t.dispute_closed(p_id, p_did, p_dstatus);
+  end if;
+  return t.dispute_open(p_id, p_did, p_dstatus);
+end \$\$;
+
+-- intake route: conditional intake write, including the dispute filter
 create or replace function t.intake(p_id text) returns int language plpgsql as \$\$
 declare n int;
 begin
@@ -121,107 +195,232 @@ begin
       intake_channel_authorization_text = 'synthetic authorization',
       fulfillment_status = 'intake_complete', updated_at = now()
   where stripe_session_id = p_id and status = 'paid'
-    and fulfillment_status = 'intake_pending' and intake_submitted_at is null;
+    and fulfillment_status = 'intake_pending'
+    and (dispute_status is null or dispute_status in ('won','warning_closed'))
+    and intake_submitted_at is null;
   get diagnostics n = row_count;
   return n;
 end \$\$;
 
+-- Controls: unguarded writes the trigger exists to stop.
 -- The pre-fix code path: upsert that overwrites status unconditionally.
 create or replace function t.legacy_upsert_paid(p_id text) returns void language sql as \$\$
   insert into public.guest_audit_purchases (stripe_session_id, flow, status, updated_at)
   values (p_id, 'osiris-audit-v1', 'paid', now())
   on conflict (stripe_session_id) do update set status = excluded.status, updated_at = excluded.updated_at;
 \$\$;
+-- A dispute write with no closed-dispute guard.
+create or replace function t.unguarded_dispute(p_id text, p_did text, p_dstatus text) returns void language sql as \$\$
+  update public.guest_audit_purchases set dispute_id = p_did, dispute_status = p_dstatus
+  where stripe_session_id = p_id;
+\$\$;
 " >/dev/null
 }
 
-state() { q "select status || '/' || fulfillment_status from public.guest_audit_purchases where stripe_session_id = '$1'"; }
+state() {
+  q "select status || '/' || fulfillment_status || '/' || coalesce(dispute_status, '-')
+     from public.guest_audit_purchases where stripe_session_id = '$1'"
+}
 start_case() {
   q "select outcome from public.start_osiris_audit_fulfillment_v1('$1', gen_random_uuid(), 'operator_synthetic', 'synthetic start', gen_random_uuid())"
 }
+operator_unpause() { q "update public.guest_audit_purchases set fulfillment_status = '$2' where stripe_session_id = '$1'" >/dev/null; }
 
-echo "Phase 1: migrations before the trigger, application guards only"
-apply_migrations no
+# $1 = prefix for session ids, so each run uses fresh rows.
+run_scenarios() {
+  local P="$1"
+  echo " Refunds"
+  q "select t.record_payment('${P}_full', 'paid'); select t.full_refund('${P}_full'); select t.record_payment('${P}_full', 'paid');" >/dev/null
+  check "replayed payment does not reopen a full refund" "$(state ${P}_full)" "refunded/refunded/-"
+
+  q "select t.record_payment('${P}_part', 'paid'); select t.partial_refund('${P}_part'); select t.record_payment('${P}_part', 'paid');" >/dev/null
+  check "replayed payment does not reopen a partial refund" "$(state ${P}_part)" "partially_refunded/paused/-"
+
+  q "select t.record_payment('${P}_late', 'paid'); select t.full_refund('${P}_late');" >/dev/null
+  check "late partial refund does not overwrite a full refund" "$(q "select coalesce(t.partial_refund('${P}_late'),'none')")/$(state ${P}_late)" "none/refunded/refunded/-"
+
+  q "select t.record_payment('${P}_up', 'paid'); select t.partial_refund('${P}_up'); select t.full_refund('${P}_up');" >/dev/null
+  check "partial refund can still become a full refund" "$(state ${P}_up)" "refunded/refunded/-"
+
+  operator_unpause "${P}_part" intake_complete
+  check "operator un-pause of a partially refunded case: start refused" "$(start_case ${P}_part)" "NOT_READY"
+
+  echo " Out-of-order and duplicate events"
+  q "select t.full_refund('${P}_ooo_full'); select t.record_payment('${P}_ooo_full', 'paid');" >/dev/null
+  check "full refund before payment event stays refunded" "$(state ${P}_ooo_full)" "refunded/refunded/-"
+  check "intake refused after refund-first ordering" "$(q "select t.intake('${P}_ooo_full')")" "0"
+
+  q "select t.partial_refund('${P}_ooo_part'); select t.record_payment('${P}_ooo_part', 'paid');" >/dev/null
+  check "partial refund before payment event stays held" "$(state ${P}_ooo_part)" "partially_refunded/paused/-"
+
+  q "select t.record_payment('${P}_dup', 'paid'); select t.record_payment('${P}_dup', 'paid'); select t.record_payment('${P}_dup', 'paid');" >/dev/null
+  check "duplicate payment events leave one paid row" "$(q "select count(*) || ':' || max(status) from public.guest_audit_purchases where stripe_session_id = '${P}_dup'")" "1:paid"
+
+  q "select t.record_payment('${P}_rev', 'paid'); select t.ensure_row('${P}_rev', 'needs_review', 'paused'); select t.hold('${P}_rev', 'needs_review', array['refunded','partially_refunded']); select t.record_payment('${P}_rev', 'paid');" >/dev/null
+  check "review hold is not cleared by a replayed payment" "$(state ${P}_rev)" "needs_review/paused/-"
+
+  echo " Disputes combined with refunds"
+  q "select t.record_payment('${P}_dp1', 'paid'); select t.intake('${P}_dp1'); select t.dispute_event('${P}_dp1', 'dp_1', 'needs_response'); select t.partial_refund('${P}_dp1');" >/dev/null
+  check "dispute, then partial refund: both visible, case paused" "$(state ${P}_dp1)" "partially_refunded/paused/needs_response"
+
+  q "select t.record_payment('${P}_dp2', 'paid'); select t.intake('${P}_dp2'); select t.partial_refund('${P}_dp2'); select t.dispute_event('${P}_dp2', 'dp_2', 'needs_response');" >/dev/null
+  check "partial refund, then dispute: both visible, case paused" "$(state ${P}_dp2)" "partially_refunded/paused/needs_response"
+
+  q "select t.record_payment('${P}_dp3', 'paid'); select t.dispute_event('${P}_dp3', 'dp_3', 'needs_response'); select t.full_refund('${P}_dp3');" >/dev/null
+  check "dispute, then full refund: refunded with the dispute still visible" "$(state ${P}_dp3)" "refunded/refunded/needs_response"
+
+  q "select t.record_payment('${P}_dp4', 'paid'); select t.full_refund('${P}_dp4'); select t.dispute_event('${P}_dp4', 'dp_4', 'needs_response');" >/dev/null
+  check "full refund, then dispute: dispute recorded, refund untouched" "$(state ${P}_dp4)" "refunded/refunded/needs_response"
+
+  q "select t.record_payment('${P}_dp5', 'paid'); select t.dispute_event('${P}_dp5', 'dp_5', 'needs_response'); select t.record_payment('${P}_dp5', 'paid');" >/dev/null
+  check "replayed payment event leaves an open dispute and the pause alone" "$(state ${P}_dp5)" "paid/paused/needs_response"
+
+  echo " Dispute closed, won and lost"
+  q "select t.record_payment('${P}_won', 'paid'); select t.intake('${P}_won'); select t.dispute_event('${P}_won', 'dp_w', 'needs_response'); select t.dispute_event('${P}_won', 'dp_w', 'won');" >/dev/null
+  check "dispute won: recorded, case stays paused for the Operator" "$(state ${P}_won)" "paid/paused/won"
+  q "select t.dispute_event('${P}_won', 'dp_w', 'needs_response'); select t.dispute_event('${P}_won', 'dp_w', 'under_review');" >/dev/null
+  check "late created/updated events do not reopen a won dispute" "$(state ${P}_won)" "paid/paused/won"
+  operator_unpause "${P}_won" intake_complete
+  check "won dispute: start allowed after the Operator un-pauses" "$(start_case ${P}_won)" "STARTED"
+
+  q "select t.record_payment('${P}_lost', 'paid'); select t.intake('${P}_lost'); select t.dispute_event('${P}_lost', 'dp_l', 'needs_response'); select t.dispute_event('${P}_lost', 'dp_l', 'lost'); select t.dispute_event('${P}_lost', 'dp_l', 'needs_response');" >/dev/null
+  check "dispute lost: stays lost against a late open event" "$(state ${P}_lost)" "paid/paused/lost"
+  operator_unpause "${P}_lost" intake_complete
+  check "lost dispute: start refused even after an un-pause" "$(start_case ${P}_lost)" "NOT_READY"
+
+  q "select t.record_payment('${P}_lf', 'paid');" >/dev/null
+  q "select t.dispute_event('${P}_lf', 'dp_lf', 'lost');" >/dev/null
+  check "lost dispute with no earlier open event still pauses an active case" "$(state ${P}_lf)" "paid/paused/lost"
+
+  q "select t.record_payment('${P}_inq', 'paid'); select t.dispute_event('${P}_inq', 'dp_i', 'warning_needs_response'); select t.dispute_event('${P}_inq', 'dp_i', 'warning_closed'); select t.dispute_event('${P}_inq', 'dp_i', 'warning_under_review');" >/dev/null
+  check "closed inquiry stays closed against a late inquiry event" "$(state ${P}_inq)" "paid/paused/warning_closed"
+  q "select t.dispute_event('${P}_inq', 'dp_i2', 'needs_response');" >/dev/null
+  check "a new dispute on the same payment after a closed inquiry is recorded" "$(q "select dispute_id || '/' || dispute_status from public.guest_audit_purchases where stripe_session_id = '${P}_inq'")" "dp_i2/needs_response"
+
+  q "select t.record_payment('${P}_open', 'paid'); select t.intake('${P}_open'); select t.dispute_event('${P}_open', 'dp_o', 'needs_response');" >/dev/null
+  operator_unpause "${P}_open" intake_complete
+  check "open dispute: start refused even after an un-pause" "$(start_case ${P}_open)" "NOT_READY"
+  q "select t.record_payment('${P}_open2', 'paid'); select t.dispute_event('${P}_open2', 'dp_o2', 'needs_response');" >/dev/null
+  operator_unpause "${P}_open2" intake_pending
+  check "open dispute: intake refused even after an un-pause" "$(q "select t.intake('${P}_open2')")" "0"
+
+  q "select t.dispute_event('${P}_first', 'dp_f', 'needs_response'); select t.record_payment('${P}_first', 'paid');" >/dev/null
+  check "dispute before the payment event: row paused with the dispute, payment recorded" "$(state ${P}_first)" "paid/paused/needs_response"
+  check "intake refused after dispute-first ordering" "$(q "select t.intake('${P}_first')")" "0"
+}
+
+# $1 = prefix, $2 = expected control outcome suffix ("reopened" or "kept")
+run_controls() {
+  local P="$1" mode="$2"
+  q "select t.legacy_upsert_paid('${P}_lg1'); select t.mark_refunded('${P}_lg1'); select t.legacy_upsert_paid('${P}_lg1');" >/dev/null
+  q "select t.record_payment('${P}_lg2', 'paid'); select t.partial_refund('${P}_lg2'); select t.legacy_upsert_paid('${P}_lg2');" >/dev/null
+  q "select t.record_payment('${P}_lg3', 'paid'); select t.dispute_event('${P}_lg3', 'dp_g', 'lost'); select t.unguarded_dispute('${P}_lg3', 'dp_g', 'needs_response');" >/dev/null
+  if [[ "$mode" == "reopened" ]]; then
+    check "control: pre-fix upsert reopens a full refund without the rule" "$(state ${P}_lg1)" "paid/refunded/-"
+    check "control: pre-fix upsert reopens a partial refund without the rule" "$(state ${P}_lg2)" "paid/paused/-"
+    check "control: unguarded write reopens a lost dispute without the rule" "$(state ${P}_lg3)" "paid/paused/needs_response"
+  else
+    check "rule keeps a full refund against the pre-fix upsert" "$(state ${P}_lg1)" "refunded/refunded/-"
+    check "rule keeps a partial refund against the pre-fix upsert" "$(state ${P}_lg2)" "partially_refunded/paused/-"
+    check "rule keeps a lost dispute against an unguarded write" "$(state ${P}_lg3)" "paid/paused/lost"
+  fi
+}
+
+# Holds the row lock in one session for 1.5 s while $2 runs in another.
+# $1 = SQL for the lock holder.
+hold_lock() { psql "$TEST_URL" -qtAX -c "begin; $1; select pg_sleep(1.5); commit;" >/dev/null & }
+
+run_races() {
+  local P="$1" A B C T0 WAITED_MS OUT
+  # A full refund holds the row lock while a partial-refund hold and a payment
+  # replay arrive. Both must re-check their WHERE clause after the lock is released.
+  q "select t.record_payment('${P}_r1', 'paid'); select t.intake('${P}_r1');" >/dev/null
+  hold_lock "select t.full_refund('${P}_r1')"; A=$!
+  sleep 0.4
+  psql "$TEST_URL" -qtAX -c "select t.partial_refund('${P}_r1')" >/dev/null & B=$!
+  psql "$TEST_URL" -qtAX -c "select t.record_payment('${P}_r1', 'paid')" >/dev/null & C=$!
+  wait $A $B $C
+  check "full refund wins over a concurrent partial refund and payment replay" "$(state ${P}_r1)" "refunded/refunded/-"
+
+  # A partial refund holds the lock while the intake write arrives.
+  q "select t.record_payment('${P}_r2', 'paid');" >/dev/null
+  hold_lock "select t.partial_refund('${P}_r2')"; A=$!
+  sleep 0.4
+  T0=$(date +%s%N)
+  OUT="$(psql "$TEST_URL" -qtAX -c "select t.intake('${P}_r2')")"
+  WAITED_MS=$(( ($(date +%s%N) - T0) / 1000000 ))
+  wait $A
+  check "intake actually waited on the row lock (>= 800 ms)" "$([[ $WAITED_MS -ge 800 ]] && echo yes || echo "no, ${WAITED_MS} ms")" "yes"
+  check "intake blocked behind a concurrent partial refund" "$OUT/$(state ${P}_r2)" "0/partially_refunded/paused/-"
+
+  # The fulfillment start RPC (FOR UPDATE) racing a full refund.
+  q "select t.record_payment('${P}_r3', 'paid'); select t.intake('${P}_r3');" >/dev/null
+  hold_lock "select t.full_refund('${P}_r3')"; A=$!
+  sleep 0.4
+  OUT="$(start_case ${P}_r3)"
+  wait $A
+  check "start refused when it queues behind a full refund" "$OUT/$(state ${P}_r3)" "NOT_READY/refunded/refunded/-"
+
+  # An open dispute holds the lock while the intake write arrives.
+  q "select t.record_payment('${P}_r4', 'paid');" >/dev/null
+  hold_lock "select t.dispute_event('${P}_r4', 'dp_r4', 'needs_response')"; A=$!
+  sleep 0.4
+  T0=$(date +%s%N)
+  OUT="$(psql "$TEST_URL" -qtAX -c "select t.intake('${P}_r4')")"
+  WAITED_MS=$(( ($(date +%s%N) - T0) / 1000000 ))
+  wait $A
+  check "intake waited on the dispute's row lock (>= 800 ms)" "$([[ $WAITED_MS -ge 800 ]] && echo yes || echo "no, ${WAITED_MS} ms")" "yes"
+  check "intake blocked behind a concurrent open dispute" "$OUT/$(state ${P}_r4)" "0/paid/paused/needs_response"
+
+  # An open dispute holds the lock while a partial refund arrives: both must survive.
+  q "select t.record_payment('${P}_r5', 'paid'); select t.intake('${P}_r5');" >/dev/null
+  hold_lock "select t.dispute_event('${P}_r5', 'dp_r5', 'needs_response')"; A=$!
+  sleep 0.4
+  psql "$TEST_URL" -qtAX -c "select t.partial_refund('${P}_r5')" >/dev/null
+  wait $A
+  check "concurrent dispute and partial refund: both visible" "$(state ${P}_r5)" "partially_refunded/paused/needs_response"
+
+  # A closing (won) event holds the lock while a late open event for the same dispute arrives.
+  q "select t.record_payment('${P}_r6', 'paid'); select t.dispute_event('${P}_r6', 'dp_r6', 'needs_response');" >/dev/null
+  hold_lock "select t.dispute_event('${P}_r6', 'dp_r6', 'won')"; A=$!
+  sleep 0.4
+  psql "$TEST_URL" -qtAX -c "select t.dispute_event('${P}_r6', 'dp_r6', 'under_review')" >/dev/null
+  wait $A
+  check "late open event queued behind a win does not reopen the dispute" "$(state ${P}_r6)" "paid/paused/won"
+
+  # The fulfillment start RPC racing an open dispute.
+  q "select t.record_payment('${P}_r7', 'paid'); select t.intake('${P}_r7');" >/dev/null
+  hold_lock "select t.dispute_event('${P}_r7', 'dp_r7', 'needs_response')"; A=$!
+  sleep 0.4
+  OUT="$(start_case ${P}_r7)"
+  wait $A
+  check "start refused when it queues behind an open dispute" "$OUT/$(state ${P}_r7)" "NOT_READY/paid/paused/needs_response"
+}
+
+echo "Applying all migrations in order"
+apply_migrations
 define_app_statements
+check "both proposed migrations applied; rule present" "$(q "select count(*) from pg_trigger where tgname = '$RULE'")" "1"
 
-q "select t.record_payment('cs_p1_full', 'paid'); select t.mark_refunded('cs_p1_full'); select t.record_payment('cs_p1_full', 'paid');" >/dev/null
-check "replayed payment does not reopen a full refund" "$(state cs_p1_full)" "refunded/refunded"
+echo
+echo "Run 1: rule DISABLED, application guards only"
+q "alter table public.guest_audit_purchases disable trigger $RULE" >/dev/null
+check "rule is disabled for this run" "$(q "select tgenabled from pg_trigger where tgname = '$RULE'")" "D"
+run_scenarios off
+echo " Controls (unguarded writes)"
+run_controls off reopened
+echo " Concurrent sessions (READ COMMITTED, real row locks)"
+run_races off
 
-q "select t.record_payment('cs_p1_part', 'paid'); select t.hold('cs_p1_part', 'partially_refunded', array['refunded']); select t.record_payment('cs_p1_part', 'paid');" >/dev/null
-check "replayed payment does not reopen a partial refund" "$(state cs_p1_part)" "partially_refunded/paused"
-
-q "select t.record_payment('cs_p1_late', 'paid'); select t.mark_refunded('cs_p1_late');" >/dev/null
-check "late partial refund does not overwrite a full refund" "$(q "select coalesce(t.hold('cs_p1_late','partially_refunded',array['refunded']),'none')")/$(state cs_p1_late)" "none/refunded/refunded"
-
-q "select t.legacy_upsert_paid('cs_p1_legacy'); select t.mark_refunded('cs_p1_legacy'); select t.legacy_upsert_paid('cs_p1_legacy');" >/dev/null
-check "control: the pre-fix upsert does reopen a refund without the trigger" "$(state cs_p1_legacy)" "paid/refunded"
-
-echo "Phase 2: with the trigger migration applied"
-psql "$TEST_URL" -v ON_ERROR_STOP=1 -qX -f "$ROOT/supabase/migrations/$NEW_MIGRATION" >/dev/null
-
-q "select t.legacy_upsert_paid('cs_p2_legacy'); select t.mark_refunded('cs_p2_legacy'); select t.legacy_upsert_paid('cs_p2_legacy');" >/dev/null
-check "trigger keeps a full refund against the pre-fix upsert" "$(state cs_p2_legacy)" "refunded/refunded"
-
-q "select t.record_payment('cs_p2_part', 'paid'); select t.hold('cs_p2_part', 'partially_refunded', array['refunded']); select t.legacy_upsert_paid('cs_p2_part');" >/dev/null
-check "trigger keeps a partial refund against the pre-fix upsert" "$(state cs_p2_part)" "partially_refunded/paused"
-
-q "select t.record_payment('cs_p2_up', 'paid'); select t.hold('cs_p2_up', 'partially_refunded', array['refunded']); select t.mark_refunded('cs_p2_up');" >/dev/null
-check "partial refund can still become a full refund" "$(state cs_p2_up)" "refunded/refunded"
-
-q "update public.guest_audit_purchases set fulfillment_status = 'intake_complete' where stripe_session_id = 'cs_p2_part'" >/dev/null
-check "operator un-pause of a partially refunded case: start refused" "$(start_case cs_p2_part)" "NOT_READY"
-
-echo "Phase 3: out-of-order events"
-q "select t.ensure_row('cs_ooo_full', 'refunded', 'refunded'); select t.mark_refunded('cs_ooo_full'); select t.record_payment('cs_ooo_full', 'paid');" >/dev/null
-check "full refund before payment event stays refunded" "$(state cs_ooo_full)" "refunded/refunded"
-check "intake refused after refund-first ordering" "$(q "select t.intake('cs_ooo_full')")" "0"
-
-q "select t.ensure_row('cs_ooo_part', 'partially_refunded', 'paused'); select t.hold('cs_ooo_part', 'partially_refunded', array['refunded']); select t.record_payment('cs_ooo_part', 'paid');" >/dev/null
-check "partial refund before payment event stays held" "$(state cs_ooo_part)" "partially_refunded/paused"
-
-q "select t.ensure_row('cs_ooo_disp', 'disputed', 'paused'); select t.hold('cs_ooo_disp', 'disputed', array['refunded']); select t.record_payment('cs_ooo_disp', 'paid');" >/dev/null
-check "dispute before payment event stays held" "$(state cs_ooo_disp)" "disputed/paused"
-
-q "select t.record_payment('cs_dup', 'paid'); select t.record_payment('cs_dup', 'paid'); select t.record_payment('cs_dup', 'paid');" >/dev/null
-check "duplicate payment events leave one paid row" "$(q "select count(*) || ':' || max(status) from public.guest_audit_purchases where stripe_session_id = 'cs_dup'")" "1:paid"
-
-q "select t.record_payment('cs_rev', 'paid'); select t.ensure_row('cs_rev', 'needs_review', 'paused'); select t.hold('cs_rev', 'needs_review', array['refunded','partially_refunded','disputed']); select t.record_payment('cs_rev', 'paid');" >/dev/null
-check "review hold is not cleared by a replayed payment" "$(state cs_rev)" "needs_review/paused"
-
-echo "Phase 4: concurrent sessions (READ COMMITTED, real row locks)"
-# A full refund holds the row lock while a partial-refund hold and a payment
-# replay arrive. Both must re-check their WHERE clause after the lock is released.
-q "select t.record_payment('cs_race', 'paid'); select t.intake('cs_race');" >/dev/null
-psql "$TEST_URL" -qtAX -c "begin; select t.mark_refunded('cs_race'); select pg_sleep(1.5); commit;" >/dev/null &
-A=$!
-sleep 0.4
-psql "$TEST_URL" -qtAX -c "select t.hold('cs_race', 'partially_refunded', array['refunded'])" >/dev/null &
-B=$!
-psql "$TEST_URL" -qtAX -c "select t.record_payment('cs_race', 'paid')" >/dev/null &
-C=$!
-wait $A $B $C
-check "full refund wins over a concurrent partial hold and payment replay" "$(state cs_race)" "refunded/refunded"
-
-# A partial-refund hold holds the lock while the intake write arrives.
-q "select t.record_payment('cs_race2', 'paid');" >/dev/null
-psql "$TEST_URL" -qtAX -c "begin; select t.hold('cs_race2', 'partially_refunded', array['refunded']); select pg_sleep(1.5); commit;" >/dev/null &
-A=$!
-sleep 0.4
-T0=$(date +%s%N)
-INTAKE_ROWS="$(psql "$TEST_URL" -qtAX -c "select t.intake('cs_race2')")"
-WAITED_MS=$(( ($(date +%s%N) - T0) / 1000000 ))
-wait $A
-check "intake actually waited on the row lock (>= 800 ms)" "$([[ $WAITED_MS -ge 800 ]] && echo yes || echo "no, ${WAITED_MS} ms")" "yes"
-check "intake blocked behind a concurrent partial refund" "$INTAKE_ROWS/$(state cs_race2)" "0/partially_refunded/paused"
-
-# The fulfillment start RPC (FOR UPDATE) racing a full refund.
-q "select t.record_payment('cs_race3', 'paid'); select t.intake('cs_race3');" >/dev/null
-psql "$TEST_URL" -qtAX -c "begin; select t.mark_refunded('cs_race3'); select pg_sleep(1.5); commit;" >/dev/null &
-A=$!
-sleep 0.4
-OUTCOME="$(start_case cs_race3)"
-wait $A
-check "start refused when it queues behind a full refund" "$OUTCOME/$(state cs_race3)" "NOT_READY/refunded/refunded"
+echo
+echo "Run 2: rule ENABLED"
+q "alter table public.guest_audit_purchases enable trigger $RULE" >/dev/null
+check "rule is enabled for this run" "$(q "select tgenabled from pg_trigger where tgname = '$RULE'")" "O"
+run_scenarios on
+echo " Controls (unguarded writes)"
+run_controls on kept
+echo " Concurrent sessions (READ COMMITTED, real row locks)"
+run_races on
 
 echo
 echo "$pass passed, $fail failed"

@@ -191,7 +191,7 @@ describe('POST /api/osiris-audit/intake', () => {
     expect(res.status).toBe(409);
   });
 
-  it('never writes Stripe payment_status over a refunded, disputed or held purchase', async () => {
+  it('never writes Stripe payment_status over a refunded or held purchase, and never touches dispute state', async () => {
     await POST(request(validBody) as never);
 
     expect(db.ops[0]).toMatchObject({
@@ -203,17 +203,22 @@ describe('POST /api/osiris-audit/intake', () => {
       'not',
       'status',
       'in',
-      '(refunded,partially_refunded,disputed,needs_review)',
+      '(refunded,partially_refunded,needs_review)',
     ]);
+    for (const op of db.ops) {
+      expect(op.payload ?? {}).not.toHaveProperty('dispute_status');
+      expect(op.payload ?? {}).not.toHaveProperty('dispute_id');
+    }
   });
 
-  it('only accepts intake for a purchase whose ledger status is still paid', async () => {
+  it('only accepts intake for a purchase that is still paid and has no open or lost dispute', async () => {
     await POST(request(validBody) as never);
 
     expect(db.ops[2].filters).toEqual([
       ['eq', 'stripe_session_id', 'cs_test_paid'],
       ['eq', 'status', 'paid'],
       ['eq', 'fulfillment_status', 'intake_pending'],
+      ['or', 'dispute_status.is.null,dispute_status.in.(won,warning_closed)'],
       ['is', 'intake_submitted_at', null],
     ]);
   });

@@ -6,7 +6,11 @@ import { stripeEnv } from '@/lib/env/stripe';
 import { OSIRIS_AUDIT_V1_CHANNEL_AUTHORIZATION_TEXT } from '@/lib/osiris-audit/authorization';
 import { osirisAuditIntakeSchema } from '@/lib/osiris-audit/intake';
 import { PURCHASE_TABLE, recordOsirisPayment } from '@/lib/osiris-audit/purchase-ledger';
-import { OSIRIS_AUDIT_V1_FLOW, checkOsirisOffer } from '@/lib/osiris-audit/webhook-gates';
+import {
+  OSIRIS_AUDIT_V1_FLOW,
+  OSIRIS_DISPUTE_ALLOWS_INTAKE,
+  checkOsirisOffer,
+} from '@/lib/osiris-audit/webhook-gates';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,7 +81,7 @@ export async function POST(req: NextRequest) {
   const now = new Date().toISOString();
 
   // Stripe keeps payment_status 'paid' after a refund, so this never overwrites
-  // a refunded, disputed or review-held ledger row.
+  // a refunded or review-held ledger row. Dispute state is in its own columns.
   const { error: paymentError } = await recordOsirisPayment(
     supabase,
     {
@@ -118,6 +122,7 @@ export async function POST(req: NextRequest) {
     .eq('stripe_session_id', session.id)
     .eq('status', 'paid')
     .eq('fulfillment_status', 'intake_pending')
+    .or(OSIRIS_DISPUTE_ALLOWS_INTAKE)
     .is('intake_submitted_at', null)
     .select('stripe_session_id');
 

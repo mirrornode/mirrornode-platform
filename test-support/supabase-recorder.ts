@@ -26,7 +26,7 @@ export function createSupabaseRecorder() {
       return { data: r.data ?? (op.selected ? [] : null), error: r.error ?? null };
     };
     const b: Record<string, unknown> = {};
-    for (const m of ['eq', 'neq', 'in', 'not', 'is']) {
+    for (const m of ['eq', 'neq', 'in', 'not', 'is', 'or']) {
       b[m] = (...args: unknown[]) => {
         op.filters.push([m, ...args]);
         return b;

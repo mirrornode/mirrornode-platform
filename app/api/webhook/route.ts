@@ -8,11 +8,14 @@ import {
   checkOsirisOffer,
   classifyRefund,
   expectedLivemode,
+  isDisputeClosed,
 } from '@/lib/osiris-audit/webhook-gates';
 import {
   ensureOsirisPurchaseRow,
   holdOsirisCase,
   markOsirisRefunded,
+  recordOsirisDisputeClosed,
+  recordOsirisDisputeOpen,
   recordOsirisPayment,
   type OsirisPurchaseFacts,
 } from '@/lib/osiris-audit/purchase-ledger';
@@ -83,7 +86,11 @@ export async function POST(req: NextRequest) {
     return handleOsirisRefund(stripe, supabase, event.data.object as Stripe.Charge);
   }
 
-  if (event.type === 'charge.dispute.created') {
+  if (
+    event.type === 'charge.dispute.created' ||
+    event.type === 'charge.dispute.updated' ||
+    event.type === 'charge.dispute.closed'
+  ) {
     return handleOsirisDispute(stripe, supabase, event.data.object as Stripe.Dispute);
   }
 
@@ -142,7 +149,7 @@ async function handleOsirisCompleted(
       supabase,
       session.id,
       'needs_review',
-      ['refunded', 'partially_refunded', 'disputed'],
+      ['refunded', 'partially_refunded'],
       now
     );
     if (held.error) return dbFailure('Review hold update error', held.error.message);
@@ -222,9 +229,16 @@ async function handleOsirisRefund(
 }
 
 /**
- * A dispute opened against an Osiris payment pauses an active case and marks
- * the payment `disputed`, which the fulfillment start RPC refuses. Resolving a
- * dispute is left to the Operator; later dispute events are not handled here.
+ * Dispute state is tracked in `dispute_id` and `dispute_status`, separately
+ * from the refund state in `status`, so a dispute stays visible when the same
+ * payment is also partly or fully refunded.
+ *
+ * An open dispute (created, or updated to any open status) pauses an active
+ * case; the fulfillment start RPC also refuses a case with an open or lost
+ * dispute. A closed dispute is recorded but never unpauses the case: resuming
+ * is the Operator's decision. A lost or prevented dispute also pauses an
+ * active case. Events can
+ * arrive in any order; a closed status is never overwritten by a late open one.
  */
 async function handleOsirisDispute(
   stripe: Stripe,
@@ -248,9 +262,31 @@ async function handleOsirisDispute(
   }
 
   const now = new Date().toISOString();
-  const ensured = await ensureOsirisPurchaseRow(supabase, purchaseFacts(session), 'disputed', 'paused', now);
+  const disputeFacts = { dispute_id: dispute.id, dispute_status: dispute.status };
+  const closed = isDisputeClosed(dispute.status);
+
+  // A dispute can arrive before checkout.session.completed. The row is created
+  // paused with the dispute recorded; the payment event then fills in `paid`
+  // without touching the dispute columns or the pause.
+  const ensured = await ensureOsirisPurchaseRow(
+    supabase,
+    purchaseFacts(session),
+    session.payment_status === 'paid' ? 'paid' : 'needs_review',
+    'paused',
+    now,
+    disputeFacts
+  );
   if (ensured.error) return dbFailure('Dispute insert error', ensured.error.message);
-  const held = await holdOsirisCase(supabase, session.id, 'disputed', ['refunded'], now);
-  if (held.error) return dbFailure('Dispute update error', held.error.message);
-  return NextResponse.json({ received: true, dispute: 'opened', fulfillmentStatus: held.fulfillmentStatus });
+
+  const written = closed
+    ? await recordOsirisDisputeClosed(supabase, session.id, disputeFacts, now)
+    : await recordOsirisDisputeOpen(supabase, session.id, disputeFacts, now);
+  if (written.error) return dbFailure('Dispute update error', written.error.message);
+
+  return NextResponse.json({
+    received: true,
+    dispute: closed ? 'closed' : 'open',
+    disputeStatus: dispute.status,
+    fulfillmentStatus: written.fulfillmentStatus,
+  });
 }
